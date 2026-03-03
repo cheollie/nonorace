@@ -398,6 +398,11 @@ export default function RoomPage() {
             finishedTimeMs: data.timeMs,
           },
         }));
+        // Refetch authoritative state so we don't miss updates if Pusher was slow or we weren't subscribed yet
+        fetch(`/api/room/${roomId}/state`)
+          .then((res) => res.json())
+          .then(applyStateToPlayers)
+          .catch(() => {});
       },
       (data) => {
         setGameStartedAt(data.startedAt);
@@ -413,7 +418,24 @@ export default function RoomPage() {
         setServerHostUserId(data.hostUserId);
       }
     );
-  }, [roomId]);
+  }, [roomId, applyStateToPlayers]);
+
+  // When tab becomes visible and game has started, refetch state so we don't show stale finish state if we missed a Pusher event
+  useEffect(() => {
+    if (!roomId || gameStartedAt == null) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      fetch(`/api/room/${roomId}/state`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
+          applyStateToPlayers(data);
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [roomId, gameStartedAt, applyStateToPlayers]);
 
   const startGame = useCallback(() => {
     fetch(`/api/room/${roomId}/start`, {
