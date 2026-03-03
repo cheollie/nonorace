@@ -147,7 +147,8 @@ export default function RoomPage() {
   const USERNAME_CONFIRMED_KEY = "nono-username-confirmed";
 
   const userId = getUserId();
-  const isHost = serverHostUserId != null ? serverHostUserId === userId : isHostFromUrl;
+  // Use only server authority for host so we never show multiple hosts (e.g. when host link is shared or before state loads).
+  const isHost = serverHostUserId === userId;
   const [username, setUsernameState] = useState("");
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [hasConfirmedUsername, setHasConfirmedUsername] = useState(false);

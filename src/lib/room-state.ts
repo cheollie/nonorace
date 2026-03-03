@@ -56,7 +56,7 @@ export function getRoomState(roomId: string): {
   };
 }
 
-/** Add member with username. Room creator (claimHost) always becomes host when they join. If no host yet and no claimHost, first joiner becomes host. */
+/** Add member with username. Only the first claimHost (room creator) becomes host; later joiners with host=1 cannot steal it. If no host yet and no claimHost, first joiner becomes host. */
 export function addMember(
   roomId: string,
   userId: string,
@@ -68,8 +68,12 @@ export function addMember(
   const entry = { userId, username: username || "Player" };
   if (existing >= 0) data.members[existing] = entry;
   else data.members.push(entry);
-  if (claimHost) data.hostUserId = userId;
-  else if (!data.hostUserId) data.hostUserId = userId;
+  // Only set host if: no host yet, or claimer is re-joining as current host (e.g. refresh). Never let a new joiner overwrite existing host.
+  if (claimHost && (!data.hostUserId || data.hostUserId === userId)) {
+    data.hostUserId = userId;
+  } else if (!data.hostUserId) {
+    data.hostUserId = userId;
+  }
   return { isHost: data.hostUserId === userId };
 }
 
