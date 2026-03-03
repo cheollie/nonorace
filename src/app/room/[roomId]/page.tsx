@@ -561,27 +561,25 @@ export default function RoomPage() {
 
         {gameStartedAt == null && (
           <div className="mb-4 p-4 rounded-lg bg-white/10 border border-white/20">
+            <p className="text-gray-300 mb-2">Players in room ({playerList.length})</p>
+            <ul className="list-disc list-inside text-gray-400 text-sm mb-3">
+              {playerList.map(([id, p]) => (
+                <li key={id}>
+                  {p.username}
+                  {id === userId && " (you)"}
+                </li>
+              ))}
+            </ul>
             {isHost ? (
-              <>
-                <p className="text-gray-300 mb-2">Players in room ({playerList.length})</p>
-                <ul className="list-disc list-inside text-gray-400 text-sm mb-3">
-                  {playerList.map(([id, p]) => (
-                    <li key={id}>
-                      {p.username}
-                      {id === userId && " (you)"}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={startGame}
-                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium"
-                >
-                  Start game
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={startGame}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium"
+              >
+                Start game
+              </button>
             ) : (
-              <p className="text-gray-300">Waiting for host to start the game…</p>
+              <p className="text-gray-300 text-sm">Waiting for host to start the game…</p>
             )}
           </div>
         )}
