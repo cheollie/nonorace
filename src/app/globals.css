@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --grid-bg: #1a1a2e;
+  --cell-filled: #e94560;
+  --cell-cross: #16213e;
+  --clue-bg: #0f3460;
+  --paper: #faf8f5;
+}
+
+body {
+  background: var(--grid-bg);
+  color: var(--paper);
+}
