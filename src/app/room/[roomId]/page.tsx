@@ -415,13 +415,17 @@ export default function RoomPage() {
   }, [roomId]);
 
   const startGame = useCallback(() => {
-    fetch(`/api/room/${roomId}/start`, { method: "POST" })
+    fetch(`/api/room/${roomId}/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data?.startedAt != null) setGameStartedAt(data.startedAt);
       })
       .catch(() => {});
-  }, [roomId]);
+  }, [roomId, userId]);
 
   const onCellChange = useCallback(
     (r: number, c: number, state: CellState) => {

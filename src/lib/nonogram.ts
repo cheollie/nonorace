@@ -63,13 +63,16 @@ export function getRunsFromLine(line: CellState[]): number[] {
   return out;
 }
 
+/** Clue [0] means "no filled cells"; getRunsFromLine returns [] for that. Treat as matching. */
+function runsMatchClue(runs: number[], clue: number[]): boolean {
+  if (clue.length === 1 && clue[0] === 0) return runs.length === 0;
+  if (runs.length !== clue.length) return false;
+  return runs.every((n, i) => n === clue[i]);
+}
+
 /** Violation when current runs don't match clue (e.g. 2,4,2 vs clue 2,3,2). */
 function runsViolateClue(runs: number[], clue: number[]): boolean {
-  if (runs.length > clue.length) return true;
-  for (let i = 0; i < runs.length; i++) {
-    if (clue[i] === undefined || runs[i] !== clue[i]) return true;
-  }
-  return false;
+  return !runsMatchClue(runs, clue);
 }
 
 /**
@@ -79,14 +82,12 @@ function runsViolateClue(runs: number[], clue: number[]): boolean {
 export function checkSolved(grid: CellState[][], puzzle: NonogramPuzzle): boolean {
   for (let r = 0; r < puzzle.rows; r++) {
     const runs = getRunsFromLine(grid[r]);
-    if (runs.length !== puzzle.rowClues[r].length || runs.some((n, i) => n !== puzzle.rowClues[r][i]))
-      return false;
+    if (!runsMatchClue(runs, puzzle.rowClues[r])) return false;
   }
   for (let c = 0; c < puzzle.cols; c++) {
     const col = grid.map((row) => row[c]);
     const runs = getRunsFromLine(col);
-    if (runs.length !== puzzle.colClues[c].length || runs.some((n, i) => n !== puzzle.colClues[c][i]))
-      return false;
+    if (!runsMatchClue(runs, puzzle.colClues[c])) return false;
   }
   return true;
 }
