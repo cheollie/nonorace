@@ -1,4 +1,5 @@
 import { broadcastFinished } from "@/lib/pusher-server";
+import { recordFinished } from "@/lib/room-state";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -11,10 +12,9 @@ export async function POST(
   if (!roomId || typeof timeMs !== "number") {
     return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
-  broadcastFinished(roomId, {
-    userId: typeof userId === "string" ? userId : "anon",
-    username: typeof username === "string" ? username : "Player",
-    timeMs,
-  });
+  const uid = typeof userId === "string" ? userId : "anon";
+  const name = typeof username === "string" ? username : "Player";
+  recordFinished(roomId, uid, name, timeMs);
+  broadcastFinished(roomId, { userId: uid, username: name, timeMs });
   return NextResponse.json({ ok: true });
 }

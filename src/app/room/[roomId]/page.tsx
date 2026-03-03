@@ -4,12 +4,13 @@ import {
   checkSolved,
   createEmptyGrid,
   generatePuzzle,
+  getViolations,
   progressPercent,
   type CellState,
   type NonogramPuzzle,
 } from "@/lib/nonogram";
 import { subscribeRoom } from "@/lib/pusher-client";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameGrid } from "./GameGrid";
 
@@ -49,21 +50,22 @@ function formatTime(ms: number): string {
 }
 
 function UsernameForm({
-  initialName,
+  value,
+  onChange,
   onSubmit,
   onContinueAsPlayer,
 }: {
-  initialName: string;
+  value: string;
+  onChange: (name: string) => void;
   onSubmit: (name: string) => void;
   onContinueAsPlayer: () => void;
 }) {
-  const [value, setValue] = useState(initialName);
   return (
     <div className="space-y-3">
       <input
         type="text"
         value={value}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         placeholder="Your name"
         className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-rose-500"
         onKeyDown={(e) => e.key === "Enter" && onSubmit(value)}
@@ -91,39 +93,82 @@ function UsernameForm({
 export default function RoomPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const roomId = params.roomId as string;
   const size = getSize(searchParams);
-  const isHost = searchParams.get("host") === "1";
+  const isHostFromUrl = searchParams.get("host") === "1";
 
   const puzzle = useMemo(() => generatePuzzle(roomId, size, size), [roomId, size]);
+
+  // Neutral initial state so server and client match (avoids hydration mismatch)
   const [grid, setGrid] = useState<CellState[][]>(() => createEmptyGrid(size, size));
-  const [gameStartedAt, setGameStartedAt] = useState<number | null>(null);
+  const [gameStartedAt, setGameStartedAtState] = useState<number | null>(null);
+  const setGameStartedAt = useCallback((value: number | null) => {
+    setGameStartedAtState(value);
+    if (typeof window !== "undefined") {
+      const key = `nono-started-${roomId}`;
+      if (value == null) sessionStorage.removeItem(key);
+      else sessionStorage.setItem(key, String(value));
+    }
+  }, [roomId]);
+
+  // After mount: restore grid and game start from storage (client-only)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const key = `nono-grid-${roomId}`;
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const data = JSON.parse(raw) as { rows: number; cols: number; grid: CellState[][] };
+        if (data.rows === size && data.cols === size && Array.isArray(data.grid) && data.grid.length === size && data.grid[0]?.length === size) {
+          setGrid(data.grid);
+          lastProgressSent.current = 0;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const startedKey = `nono-started-${roomId}`;
+    const s = sessionStorage.getItem(startedKey);
+    if (s) {
+      const n = Number(s);
+      if (!Number.isNaN(n)) setGameStartedAtState(n);
+    }
+  }, [roomId, size]);
+
+  const [serverHostUserId, setServerHostUserId] = useState<string | null>(null);
   const [finishedTime, setFinishedTime] = useState<number | null>(null);
   const [displayTimeMs, setDisplayTimeMs] = useState(0);
   const [players, setPlayers] = useState<Record<string, PlayerState>>({});
   const sentJoin = useRef(false);
   const lastProgressSent = useRef(0);
+  const lastPercentRef = useRef(0);
 
   const USERNAME_CONFIRMED_KEY = "nono-username-confirmed";
 
   const userId = getUserId();
+  const isHost = serverHostUserId != null ? serverHostUserId === userId : isHostFromUrl;
   const [username, setUsernameState] = useState("");
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [hasConfirmedUsername, setHasConfirmedUsername] = useState(false);
 
-  // On mount: if they already confirmed this session (same tab), skip prompt. Else show prompt (new tab/browser).
+  // On mount: when joining via link (no host=1) always show prompt so they can enter/confirm name. When host, only show if not confirmed this session.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const confirmed = sessionStorage.getItem(USERNAME_CONFIRMED_KEY);
     const saved = getUsername();
     setUsernameState(saved);
-    if (confirmed) {
+    const joiningViaLink = !isHostFromUrl;
+    if (joiningViaLink) {
+      setShowUsernamePrompt(true);
+      setHasConfirmedUsername(false);
+    } else if (confirmed) {
       setHasConfirmedUsername(true);
       setShowUsernamePrompt(false);
     } else {
       setShowUsernamePrompt(true);
     }
-  }, []);
+  }, [isHostFromUrl]);
 
   const setUsername = useCallback((name: string) => {
     const v = (name || "Player").trim() || "Player";
@@ -138,14 +183,40 @@ export default function RoomPage() {
 
   const usernameOrFallback = username || "Player";
 
-  // Add self to players once username is confirmed
+  // Add self to players once username is confirmed; preserve existing percent/finished so we don't wipe win state
   useEffect(() => {
     if (showUsernamePrompt) return;
     setPlayers((prev) => ({
       ...prev,
-      [userId]: { username: usernameOrFallback, percent: null, finishedTimeMs: null },
+      [userId]: {
+        username: usernameOrFallback,
+        percent: prev[userId]?.percent ?? null,
+        finishedTimeMs: prev[userId]?.finishedTimeMs ?? null,
+      },
     }));
   }, [userId, usernameOrFallback, showUsernamePrompt]);
+
+  // Persist grid to localStorage (debounced)
+  const gridSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    gridSaveRef.current && clearTimeout(gridSaveRef.current);
+    gridSaveRef.current = setTimeout(() => {
+      const key = `nono-grid-${roomId}`;
+      try {
+        localStorage.setItem(
+          key,
+          JSON.stringify({ rows: size, cols: size, grid })
+        );
+      } catch {
+        // ignore quota etc.
+      }
+      gridSaveRef.current = null;
+    }, 500);
+    return () => {
+      if (gridSaveRef.current) clearTimeout(gridSaveRef.current);
+    };
+  }, [roomId, size, grid]);
 
   // Timer: only run after game start; use shared gameStartedAt
   useEffect(() => {
@@ -165,37 +236,115 @@ export default function RoomPage() {
   useEffect(() => {
     if (!roomId || gameStartedAt == null || finishedTime != null) return;
     const pct = progressPercent(grid, puzzle);
+    lastPercentRef.current = pct;
     const now = Date.now();
     if (now - lastProgressSent.current < 800) return;
     lastProgressSent.current = now;
     fetch(`/api/room/${roomId}/progress`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, username: usernameOrFallback, percent: pct }),
+      body: JSON.stringify({ userId, username: getUsername(), percent: pct }),
     }).catch(() => {});
-  }, [roomId, userId, usernameOrFallback, grid, puzzle, gameStartedAt, finishedTime]);
+  }, [roomId, userId, grid, puzzle, gameStartedAt, finishedTime]);
 
-  // Join room once, only after user has confirmed username (so joiners see prompt first)
+  const applyStateToPlayers = useCallback(
+    (data: {
+      members?: { userId: string; username: string }[];
+      finished?: { userId: string; username: string; timeMs: number }[];
+    }) => {
+      const members = Array.isArray(data?.members) ? data.members : [];
+      const list = Array.isArray(data?.finished) ? data.finished : [];
+      if (members.length > 0 || list.length > 0) {
+        setPlayers((prev) => {
+          const next = { ...prev };
+          for (const m of members) {
+            next[m.userId] = {
+              ...(next[m.userId] ?? { username: m.username, percent: null, finishedTimeMs: null }),
+              username: m.username,
+            };
+          }
+          for (const f of list) {
+            next[f.userId] = {
+              ...(next[f.userId] ?? { username: f.username, percent: null }),
+              username: f.username,
+              finishedTimeMs: f.timeMs,
+            };
+          }
+          return next;
+        });
+        const myEntry = list.find((f: { userId: string }) => f.userId === userId);
+        if (myEntry) {
+          setFinishedTime(myEntry.timeMs);
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem(`nono-finished-${roomId}`, String(myEntry.timeMs));
+          }
+        }
+      }
+    },
+    [userId, roomId]
+  );
+
+  // Join room once, only after user has confirmed username; send name from localStorage so reload gets correct name
   useEffect(() => {
     if (!roomId || !hasConfirmedUsername || sentJoin.current) return;
     sentJoin.current = true;
+    const nameToSend = getUsername();
     fetch(`/api/room/${roomId}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, username: usernameOrFallback }),
-    }).catch(() => {});
-  }, [roomId, userId, usernameOrFallback, hasConfirmedUsername]);
+      body: JSON.stringify({
+        userId,
+        username: nameToSend,
+        host: isHostFromUrl,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.startedAt != null) setGameStartedAt(data.startedAt);
+        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
+        applyStateToPlayers(data);
+      })
+      .catch(() => {});
+  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, setGameStartedAt, applyStateToPlayers]);
 
-  // Late joiner: fetch room state so we get gameStartedAt if the game already started
+  // Late joiner / reload: fetch room state for gameStartedAt, host, members, and finished list
   useEffect(() => {
     if (!roomId) return;
     fetch(`/api/room/${roomId}/state`)
       .then((res) => res.json())
       .then((data) => {
         if (data?.startedAt != null) setGameStartedAt(data.startedAt);
+        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
+        applyStateToPlayers(data);
       })
       .catch(() => {});
-  }, [roomId]);
+  }, [roomId, setGameStartedAt, applyStateToPlayers]);
+
+  // Recompute win state whenever grid/game state updates (load, join, restore): if our grid is solved, show us as finished
+  useEffect(() => {
+    if (gameStartedAt == null || !checkSolved(grid, puzzle)) return;
+    const timeMs =
+      finishedTime ??
+      (typeof window !== "undefined"
+        ? (() => {
+            const s = sessionStorage.getItem(`nono-finished-${roomId}`);
+            if (!s) return null;
+            const n = Number(s);
+            return Number.isNaN(n) ? null : n;
+          })()
+        : null) ??
+      0;
+    if (timeMs <= 0) return;
+    if (finishedTime != null) return;
+    setFinishedTime(timeMs);
+    setPlayers((prev) => ({
+      ...prev,
+      [userId]: {
+        ...(prev[userId] ?? { username: usernameOrFallback, percent: null }),
+        finishedTimeMs: timeMs,
+      },
+    }));
+  }, [grid, puzzle, gameStartedAt, roomId, userId, usernameOrFallback, finishedTime]);
 
   // Subscribe to room events
   useEffect(() => {
@@ -203,21 +352,42 @@ export default function RoomPage() {
     return subscribeRoom(
       roomId,
       (data) => {
-        setPlayers((prev) => ({
-          ...prev,
-          [data.userId]: {
-            ...(prev[data.userId] ?? { username: data.username, finishedTimeMs: null }),
-            percent: data.percent,
-          },
-        }));
+        setPlayers((prev) => {
+          const existing = prev[data.userId];
+          const finishedTimeMs = existing?.finishedTimeMs ?? null;
+          return {
+            ...prev,
+            [data.userId]: {
+              ...(existing ?? { username: data.username, finishedTimeMs: null }),
+              percent: data.percent,
+              ...(finishedTimeMs != null && { finishedTimeMs }),
+            },
+          };
+        });
       },
-      (data) => {
-        setPlayers((prev) => ({
-          ...prev,
-          [data.userId]: prev[data.userId]
-            ? { ...prev[data.userId], username: data.username }
-            : { username: data.username, percent: null, finishedTimeMs: null },
-        }));
+      (data: { userId: string; username: string; finishedTimeMs?: number }) => {
+        setPlayers((prev) => {
+          const existing = prev[data.userId];
+          const finishedTimeMs =
+            data.finishedTimeMs ?? existing?.finishedTimeMs ?? null;
+          return {
+            ...prev,
+            [data.userId]: existing
+              ? { ...existing, username: data.username, finishedTimeMs }
+              : { username: data.username, percent: null, finishedTimeMs },
+          };
+        });
+        if (data.userId !== userId) {
+          fetch(`/api/room/${roomId}/progress`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              username: usernameOrFallback,
+              percent: lastPercentRef.current,
+            }),
+          }).catch(() => {});
+        }
       },
       (data) => {
         setPlayers((prev) => ({
@@ -230,6 +400,16 @@ export default function RoomPage() {
       },
       (data) => {
         setGameStartedAt(data.startedAt);
+      },
+      (data: { userId: string }) => {
+        setPlayers((prev) => {
+          const next = { ...prev };
+          delete next[data.userId];
+          return next;
+        });
+      },
+      (data: { hostUserId: string | null }) => {
+        setServerHostUserId(data.hostUserId);
       }
     );
   }, [roomId]);
@@ -246,24 +426,37 @@ export default function RoomPage() {
   const onCellChange = useCallback(
     (r: number, c: number, state: CellState) => {
       if (gameStartedAt == null || finishedTime != null) return;
-      setGrid((prev) => {
-        const next = prev.map((row, i) =>
+      setGrid((prev) =>
+        prev.map((row, i) =>
           i === r ? row.map((cell, j) => (j === c ? state : cell)) : row
-        );
-        if (checkSolved(next, puzzle)) {
-          const timeMs = Date.now() - gameStartedAt;
-          setFinishedTime(timeMs);
-          fetch(`/api/room/${roomId}/finished`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ userId, username: usernameOrFallback, timeMs }),
-          }).catch(() => {});
-        }
-        return next;
-      });
+        )
+      );
     },
-    [puzzle, gameStartedAt, finishedTime, roomId, userId, usernameOrFallback]
+    [gameStartedAt, finishedTime]
   );
+
+  // Check win state after every grid change (so we never miss a solve from stale state or rapid clicks)
+  useEffect(() => {
+    if (gameStartedAt == null || finishedTime != null || !checkSolved(grid, puzzle)) return;
+    const timeMs = Date.now() - gameStartedAt;
+    lastPercentRef.current = 100;
+    setFinishedTime(timeMs);
+    setPlayers((prev) => ({
+      ...prev,
+      [userId]: {
+        ...(prev[userId] ?? { username: usernameOrFallback, percent: null }),
+        finishedTimeMs: timeMs,
+      },
+    }));
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`nono-finished-${roomId}`, String(timeMs));
+    }
+    fetch(`/api/room/${roomId}/finished`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, username: getUsername(), timeMs }),
+    }).catch(() => {});
+  }, [grid, puzzle, gameStartedAt, finishedTime, roomId, userId, usernameOrFallback]);
 
   const roomLink = typeof window !== "undefined" ? `${window.location.origin}/room/${roomId}?size=${size}` : "";
   const canPlay = gameStartedAt != null;
@@ -272,6 +465,7 @@ export default function RoomPage() {
     .filter(([, p]) => p.finishedTimeMs != null)
     .sort((a, b) => (a[1].finishedTimeMs ?? 0) - (b[1].finishedTimeMs ?? 0));
   const winner = finishedList[0];
+  const myProgressPercent = canPlay ? progressPercent(grid, puzzle) : 0;
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   return (
@@ -283,7 +477,8 @@ export default function RoomPage() {
             <h2 className="text-lg font-semibold text-white mb-2">What’s your name?</h2>
             <p className="text-sm text-gray-400 mb-4">So others in the room can see who joined.</p>
             <UsernameForm
-              initialName={usernameOrFallback}
+              value={username}
+              onChange={setUsernameState}
               onSubmit={setUsername}
               onContinueAsPlayer={() => setUsername("Player")}
             />
@@ -297,12 +492,20 @@ export default function RoomPage() {
             <a href="/" className="text-gray-400 hover:text-white transition">
               ← Home
             </a>
-            <a
-              href="/"
+            <button
+              type="button"
+              onClick={() => {
+                fetch(`/api/room/${roomId}/leave`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ userId }),
+                }).catch(() => {});
+                router.push("/");
+              }}
               className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-gray-300 transition"
             >
               Leave
-            </a>
+            </button>
             <span className="text-gray-500">|</span>
             <span className="text-sm text-gray-400">
               Room: {roomId.slice(0, 8)}… · {size}×{size}
@@ -347,6 +550,7 @@ export default function RoomPage() {
             <p><strong>Tap/click:</strong> 1st = black (filled), 2nd = X (empty for sure), 3rd = clear.</p>
             <p><strong>Drag:</strong> Press and drag to paint multiple cells — starts black or X depending on the cell you started on.</p>
             <p>Only the black cells are checked; first to finish with all correct filled cells wins.</p>
+            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room in this browser. Timer and game state are also restored. Use Leave if you want to leave the room (closing the tab does not remove you from others’ list).</p>
           </div>
         )}
 
@@ -398,6 +602,7 @@ export default function RoomPage() {
             grid={grid}
             onCellChange={onCellChange}
             disabled={finishedTime != null}
+            violations={getViolations(grid, puzzle)}
           />
         </div>
 
@@ -422,7 +627,7 @@ export default function RoomPage() {
                       </span>
                     ) : (
                       <span className="text-gray-400 text-sm tabular-nums shrink-0">
-                        {(p.percent ?? 0)}%
+                        {(id === userId ? myProgressPercent : (p.percent ?? 0))}%
                       </span>
                     )}
                   </div>
@@ -430,7 +635,7 @@ export default function RoomPage() {
                     <div
                       className="h-full rounded-full bg-rose-500/80 transition-all duration-300"
                       style={{
-                        width: `${p.finishedTimeMs != null ? 100 : (p.percent ?? 0)}%`,
+                        width: `${p.finishedTimeMs != null ? 100 : (id === userId ? myProgressPercent : (p.percent ?? 0))}%`,
                       }}
                     />
                   </div>

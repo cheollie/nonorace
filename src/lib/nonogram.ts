@@ -48,17 +48,68 @@ function getClue(line: boolean[]): number[] {
   return out.length ? out : [0];
 }
 
+/** Get run lengths of filled cells in a line (empty and cross both count as break). */
+export function getRunsFromLine(line: CellState[]): number[] {
+  const out: number[] = [];
+  let count = 0;
+  for (const cell of line) {
+    if (cell === "filled") count++;
+    else if (count > 0) {
+      out.push(count);
+      count = 0;
+    }
+  }
+  if (count > 0) out.push(count);
+  return out;
+}
+
+/** Violation when current runs don't match clue (e.g. 2,4,2 vs clue 2,3,2). */
+function runsViolateClue(runs: number[], clue: number[]): boolean {
+  if (runs.length > clue.length) return true;
+  for (let i = 0; i < runs.length; i++) {
+    if (clue[i] === undefined || runs[i] !== clue[i]) return true;
+  }
+  return false;
+}
+
 /**
- * Check if current grid state matches the solution (only filled vs not matters for win).
+ * Win when all row and column clues are satisfied by current filled cells.
+ * Any configuration that satisfies the clues counts (not just the generated solution).
  */
 export function checkSolved(grid: CellState[][], puzzle: NonogramPuzzle): boolean {
   for (let r = 0; r < puzzle.rows; r++) {
-    for (let c = 0; c < puzzle.cols; c++) {
-      const filled = grid[r][c] === "filled";
-      if (filled !== puzzle.solution[r][c]) return false;
-    }
+    const runs = getRunsFromLine(grid[r]);
+    if (runs.length !== puzzle.rowClues[r].length || runs.some((n, i) => n !== puzzle.rowClues[r][i]))
+      return false;
+  }
+  for (let c = 0; c < puzzle.cols; c++) {
+    const col = grid.map((row) => row[c]);
+    const runs = getRunsFromLine(col);
+    if (runs.length !== puzzle.colClues[c].length || runs.some((n, i) => n !== puzzle.colClues[c][i]))
+      return false;
   }
   return true;
+}
+
+/**
+ * Which row and column indices have a clue violation (current runs don't match clue).
+ */
+export function getViolations(
+  grid: CellState[][],
+  puzzle: NonogramPuzzle
+): { rowIndices: number[]; colIndices: number[] } {
+  const rowIndices: number[] = [];
+  const colIndices: number[] = [];
+  for (let r = 0; r < puzzle.rows; r++) {
+    const runs = getRunsFromLine(grid[r]);
+    if (runsViolateClue(runs, puzzle.rowClues[r])) rowIndices.push(r);
+  }
+  for (let c = 0; c < puzzle.cols; c++) {
+    const col = grid.map((row) => row[c]);
+    const runs = getRunsFromLine(col);
+    if (runsViolateClue(runs, puzzle.colClues[c])) colIndices.push(c);
+  }
+  return { rowIndices, colIndices };
 }
 
 /**

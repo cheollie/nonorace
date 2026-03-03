@@ -23,9 +23,10 @@ interface GameGridProps {
   grid: CellState[][];
   onCellChange: (r: number, c: number, state: CellState) => void;
   disabled?: boolean;
+  violations?: { rowIndices: number[]; colIndices: number[] };
 }
 
-export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps) {
+export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: GameGridProps) {
   const { rows, cols, rowClues, colClues } = puzzle;
   const maxRowClues = Math.max(1, ...rowClues.map((c) => c.length));
   const maxColClues = Math.max(1, ...colClues.map((c) => c.length));
@@ -39,6 +40,9 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps
     hasMoved: false,
     pointerId: 0,
   });
+
+  const rowSet = new Set(violations?.rowIndices ?? []);
+  const colSet = new Set(violations?.colIndices ?? []);
 
   const handlePointerDown = (e: React.PointerEvent, r: number, c: number) => {
     if (disabled) return;
@@ -131,17 +135,15 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps
           gridTemplateColumns: `repeat(${maxRowClues}, ${clueSize}px) repeat(${cols}, ${cellSize}px)`,
         }}
       >
-        {/* Corner */}
         <div
           className="bg-[#0f3460]"
           style={{ gridRow: `1 / ${maxColClues + 1}`, gridColumn: `1 / ${maxRowClues + 1}` }}
         />
 
-        {/* Column clues */}
         {colClues.map((clue, c) => (
           <div
             key={`col-${c}`}
-            className="flex flex-col items-center justify-end gap-px bg-[#0f3460] p-0.5"
+            className={`flex flex-col items-center justify-end gap-px p-0.5 ${colSet.has(c) ? "bg-red-900/60" : "bg-[#0f3460]"}`}
             style={{
               gridRow: `1 / ${maxColClues + 1}`,
               gridColumn: `${maxRowClues + c + 1}`,
@@ -161,11 +163,10 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps
           </div>
         ))}
 
-        {/* Row clues and grid cells */}
         {rowClues.map((clue, r) => (
           <div
             key={`rowclue-${r}`}
-            className="flex items-center justify-end gap-px bg-[#0f3460] p-0.5"
+            className={`flex items-center justify-end gap-px p-0.5 ${rowSet.has(r) ? "bg-red-900/60" : "bg-[#0f3460]"}`}
             style={{
               gridRow: `${maxColClues + r + 1}`,
               gridColumn: `1 / ${maxRowClues + 1}`,
@@ -191,7 +192,10 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps
               key={`${r}-${c}`}
               type="button"
               disabled={disabled}
-              onPointerDown={(e) => { e.preventDefault(); handlePointerDown(e, r, c); }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                handlePointerDown(e, r, c);
+              }}
               onPointerEnter={() => handlePointerEnter(r, c)}
               className={`
                 min-w-0 min-h-0 border border-white/10 transition touch-none
@@ -212,7 +216,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled }: GameGridProps
           ))
         )}
       </div>
-      {/* Overlay: thicker/whiter lines every 5 cells */}
+
       <div
         className="absolute pointer-events-none"
         style={{

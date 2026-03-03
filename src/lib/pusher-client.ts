@@ -22,7 +22,9 @@ export function subscribeRoom(
   onProgress: (data: { userId: string; username: string; percent: number }) => void,
   onJoin: (data: { userId: string; username: string }) => void,
   onFinished: (data: { userId: string; username: string; timeMs: number }) => void,
-  onGameStart: (data: { startedAt: number }) => void
+  onGameStart: (data: { startedAt: number }) => void,
+  onPlayerLeft?: (data: { userId: string }) => void,
+  onHostChanged?: (data: { hostUserId: string | null }) => void
 ): (() => void) {
   const client = getPusherClient();
   if (!client) return () => {};
@@ -33,6 +35,8 @@ export function subscribeRoom(
   channel.bind("player-join", onJoin);
   channel.bind("finished", onFinished);
   channel.bind("game-start", onGameStart);
+  if (onPlayerLeft) channel.bind("player-left", onPlayerLeft);
+  if (onHostChanged) channel.bind("host-changed", onHostChanged);
 
   return () => {
     channel.unbind_all();

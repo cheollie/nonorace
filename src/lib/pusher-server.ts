@@ -28,7 +28,10 @@ export function broadcastProgress(roomId: string, payload: { userId: string; use
   pusher.trigger(getPusherChannel(roomId), "progress", payload);
 }
 
-export function broadcastJoin(roomId: string, payload: { userId: string; username: string }) {
+export function broadcastJoin(
+  roomId: string,
+  payload: { userId: string; username: string; finishedTimeMs?: number }
+) {
   const pusher = getPusher();
   if (!pusher) return;
   pusher.trigger(getPusherChannel(roomId), "player-join", payload);
@@ -44,4 +47,16 @@ export function broadcastGameStart(roomId: string, payload: { startedAt: number 
   const pusher = getPusher();
   if (!pusher) return;
   pusher.trigger(getPusherChannel(roomId), "game-start", payload);
+}
+
+export function broadcastPlayerLeft(roomId: string, payload: { userId: string }) {
+  const pusher = getPusher();
+  if (!pusher) return;
+  pusher.trigger(getPusherChannel(roomId), "player-left", payload);
+}
+
+export function broadcastHostChanged(roomId: string, payload: { hostUserId: string | null }) {
+  const pusher = getPusher();
+  if (!pusher) return;
+  pusher.trigger(getPusherChannel(roomId), "host-changed", payload);
 }
