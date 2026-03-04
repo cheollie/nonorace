@@ -10,17 +10,65 @@ export interface NonogramPuzzle {
   solution: boolean[][]; // true = filled
 }
 
+/** Pick a run length 1–maxLen with 1s and 2s common, but 3–8+ possible (for patterns like 1 1 5, 7 2, 2 3 2, 10, 1 8 1). */
+function pickRunLength(rng: () => number, maxLen: number): number {
+  if (maxLen <= 0) return 1;
+  const roll = rng();
+  if (roll < 0.32) return 1;
+  if (roll < 0.58) return 2;
+  if (roll < 0.75) return 3;
+  if (roll < 0.87) return 4;
+  if (roll < 0.94) return 5;
+  if (roll < 0.98) return 6;
+  // 7, 8, or up to maxLen for single long runs (e.g. "10")
+  return Math.min(7 + Math.floor(rng() * Math.max(1, maxLen - 6)), maxLen);
+}
+
 /**
  * Generate a deterministic nonogram puzzle from room id and size.
- * Uses a simple random grid; both players get the same puzzle.
+ * Builds each row from a mix of run lengths (1s and 2s common, plus 3–8) so clues look like 1 1 5, 7 2, 2 3 2, 10, 1 8 1.
  */
 export function generatePuzzle(roomId: string, rows: number, cols: number): NonogramPuzzle {
   const rng = createSeededRandom(`${roomId}-${rows}x${cols}`);
-  const solution: boolean[][] = [];
+  const solution: boolean[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => false)
+  );
+
   for (let r = 0; r < rows; r++) {
-    solution[r] = [];
-    for (let c = 0; c < cols; c++) {
-      solution[r][c] = rng() < 0.45; // ~45% filled for variety
+    // Number of runs in this row: 1 to ~5 (so we can get "10" or "1 1 1 1" or "2 3 2")
+    const numRuns = 1 + Math.floor(rng() * Math.min(5, Math.max(1, cols)));
+    const runs: number[] = [];
+    let sum = 0;
+    const maxSum = cols - (numRuns - 1); // need at least 1 gap between each run
+    for (let i = 0; i < numRuns; i++) {
+      const remaining = numRuns - 1 - i; // min gaps still needed
+      const maxForThis = Math.min(maxSum - sum - remaining, cols);
+      if (maxForThis < 1) break;
+      const len = Math.max(1, pickRunLength(rng, maxForThis));
+      runs.push(len);
+      sum += len;
+    }
+    // If we overshot, trim from the end or shrink a run
+    while (sum + (runs.length - 1) > cols && runs.length > 0) {
+      const last = runs.pop()!;
+      sum -= last;
+      if (runs.length > 0 && last > 1) {
+        runs.push(last - 1);
+        sum += last - 1;
+      }
+    }
+    if (runs.length === 0) runs.push(Math.min(cols, Math.max(1, pickRunLength(rng, cols))));
+
+    // Place runs with exactly 1 cell gap between (so we never overflow the row)
+    const totalUsed = sum + (runs.length - 1);
+    const startOffset = totalUsed <= cols ? Math.floor(rng() * (cols - totalUsed + 1)) : 0;
+    let pos = startOffset;
+    for (let i = 0; i < runs.length; i++) {
+      for (let j = 0; j < runs[i]; j++) {
+        if (pos + j < cols) solution[r][pos + j] = true;
+      }
+      pos += runs[i];
+      if (i < runs.length - 1) pos += 1; // exactly 1 gap so layout always fits
     }
   }
 

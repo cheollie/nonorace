@@ -613,7 +613,7 @@ export default function RoomPage() {
               {finishedList.map(([id, p], i) => (
                 <li key={id} className="text-white">
                   {i + 1}. {p.username}
-                  {id === userId && " (you)"} — {(p.finishedTimeMs! / 1000).toFixed(1)}s
+                  {id === userId && " (you)"} — {formatTime(p.finishedTimeMs!)}
                   {winner && winner[0] === id && <span className="text-green-400 ml-1">✓</span>}
                 </li>
               ))}
@@ -648,7 +648,7 @@ export default function RoomPage() {
                     </span>
                     {p.finishedTimeMs != null ? (
                       <span className="text-green-400 text-sm font-mono tabular-nums shrink-0">
-                        {(p.finishedTimeMs / 1000).toFixed(1)}s
+                        {formatTime(p.finishedTimeMs)}
                       </span>
                     ) : (
                       <span className="text-gray-400 text-sm tabular-nums shrink-0">

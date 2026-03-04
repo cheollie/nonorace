@@ -8,22 +8,15 @@ type Size = (typeof SIZES)[number];
 
 export default function HomePage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
   const [joinInput, setJoinInput] = useState("");
   const [size, setSize] = useState<Size>(10);
 
-  const saveUsername = useCallback((name: string) => {
-    if (typeof window !== "undefined") localStorage.setItem("nono-username", name.trim() || "Player");
-  }, []);
-
   const createRoom = useCallback(() => {
-    saveUsername(username);
     const roomId = crypto.randomUUID();
     router.push(`/room/${roomId}?size=${size}&host=1`);
-  }, [username, size, saveUsername, router]);
+  }, [size, router]);
 
   const joinRoom = useCallback(() => {
-    saveUsername(username);
     const raw = joinInput.trim();
     // Allow pasting full URL or just room id
     let roomId: string;
@@ -44,7 +37,7 @@ export default function HomePage() {
     } catch {
       if (raw) router.push(`/room/${raw}?size=${size}`);
     }
-  }, [username, joinInput, size, saveUsername, router]);
+  }, [joinInput, size, router]);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
@@ -52,18 +45,7 @@ export default function HomePage() {
       <p className="text-gray-400 text-center mb-8">Create a room, send the link. Host starts when everyone’s in; shared timer, first to finish wins.</p>
 
       <div className="w-full max-w-sm space-y-4">
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Username (optional)</label>
-          <input
-            type="text"
-            placeholder="Player"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-rose-500"
-          />
-        </div>
-
-        <div className="border-t border-white/10 pt-4">
+        <div className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
           <p className="text-sm text-gray-400 mb-2">Create room</p>
           <div className="grid grid-cols-4 gap-2 mb-3">
             {SIZES.map((s) => (
