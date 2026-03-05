@@ -410,6 +410,24 @@ export function RoomScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
+  // Poll room state so player lists and game updates sync even if Pusher misses events or is unavailable
+  useEffect(() => {
+    if (!roomId || !hasConfirmedUsername) return;
+    const POLL_MS = 2500;
+    const poll = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetch(`/api/room/${roomId}/state`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && !data.error) applyFullStateRef.current(data);
+        })
+        .catch(() => {});
+    };
+    poll();
+    const id = setInterval(poll, POLL_MS);
+    return () => clearInterval(id);
+  }, [roomId, hasConfirmedUsername]);
+
   useEffect(() => {
     if (!roomId || gameStartedAt == null) return;
     const onVisible = () => {

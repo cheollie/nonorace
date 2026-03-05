@@ -41,9 +41,43 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
     pointerId: 0,
   });
   const docListenersRef = useRef<{ move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null>(null);
+  const touchListenersRef = useRef<{ move: (e: TouchEvent) => void; end: (e: TouchEvent) => void } | null>(null);
 
   const rowSet = new Set(violations?.rowIndices ?? []);
   const colSet = new Set(violations?.colIndices ?? []);
+
+  const cellSize = Math.min(28, Math.floor(420 / Math.max(rows, cols)));
+  const clueSize = 20;
+  const gap = 1;
+  const lastCellRef = useRef<{ r: number; c: number } | null>(null);
+
+  const getCellFromPoint = useCallback(
+    (clientX: number, clientY: number): { r: number; c: number } | null => {
+      const el = gridRef.current;
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const pad = 4;
+      const startX = rect.left + pad + maxRowClues * (clueSize + gap) - el.scrollLeft;
+      const startY = rect.top + pad + maxColClues * (clueSize + gap) - el.scrollTop;
+      const localX = clientX - startX;
+      const localY = clientY - startY;
+      if (localX < 0 || localY < 0) return null;
+      const c = Math.floor(localX / (cellSize + gap));
+      const r = Math.floor(localY / (cellSize + gap));
+      if (c < 0 || c >= cols || r < 0 || r >= rows) return null;
+      return { r, c };
+    },
+    [maxRowClues, maxColClues, clueSize, cellSize, gap, rows, cols]
+  );
+
+  const removeTouchListeners = useCallback(() => {
+    const L = touchListenersRef.current;
+    if (!L) return;
+    document.removeEventListener("touchmove", L.move, { capture: true, passive: false });
+    document.removeEventListener("touchend", L.end, { capture: true });
+    document.removeEventListener("touchcancel", L.end, { capture: true });
+    touchListenersRef.current = null;
+  }, []);
 
   const removeDocListeners = useCallback(() => {
     const L = docListenersRef.current;
@@ -56,9 +90,17 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
 
   const handlePointerDown = (e: React.PointerEvent, r: number, c: number) => {
     if (disabled) return;
-    e.preventDefault();
     const current = grid[r][c];
-    const brush: CellState = cycle(current);
+    let brush: CellState;
+    if (e.button === 0) {
+      brush = cycle(current);
+    } else if (e.button === 2) {
+      e.preventDefault();
+      brush = "cross";
+    } else {
+      return;
+    }
+    e.preventDefault();
     lastCellRef.current = null;
     dragRef.current = { active: true, brush, startR: r, startC: c, hasMoved: false, pointerId: e.pointerId };
     onCellChange(r, c, brush);
@@ -105,34 +147,54 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
     const d = dragRef.current;
     if (!d.active || e.pointerId !== d.pointerId) return;
     removeDocListeners();
+    removeTouchListeners();
     dragRef.current.active = false;
     lastCellRef.current = null;
     gridRef.current?.releasePointerCapture(d.pointerId);
   };
 
-  const cellSize = Math.min(28, Math.floor(420 / Math.max(rows, cols)));
-  const clueSize = 20;
-  const gap = 1;
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent, r: number, c: number) => {
+      if (disabled) return;
+      if (dragRef.current.active) return;
+      if (e.touches.length !== 1) return;
+      e.preventDefault();
+      const current = grid[r][c];
+      const brush: CellState = cycle(current);
+      lastCellRef.current = null;
+      const touchId = e.touches[0].identifier;
+      dragRef.current = { active: true, brush, startR: r, startC: c, hasMoved: false, pointerId: touchId };
 
-  const lastCellRef = useRef<{ r: number; c: number } | null>(null);
+      onCellChange(r, c, brush);
 
-  const getCellFromPoint = useCallback(
-    (clientX: number, clientY: number): { r: number; c: number } | null => {
-      const el = gridRef.current;
-      if (!el) return null;
-      const rect = el.getBoundingClientRect();
-      const pad = 4;
-      const startX = rect.left + pad + maxRowClues * (clueSize + gap) - el.scrollLeft;
-      const startY = rect.top + pad + maxColClues * (clueSize + gap) - el.scrollTop;
-      const localX = clientX - startX;
-      const localY = clientY - startY;
-      if (localX < 0 || localY < 0) return null;
-      const c = Math.floor(localX / (cellSize + gap));
-      const r = Math.floor(localY / (cellSize + gap));
-      if (c < 0 || c >= cols || r < 0 || r >= rows) return null;
-      return { r, c };
+      const onTouchMove = (ev: TouchEvent) => {
+        if (ev.touches.length !== 1 || ev.touches[0].identifier !== touchId) return;
+        ev.preventDefault();
+        const t = ev.touches[0];
+        const cell = getCellFromPoint(t.clientX, t.clientY);
+        if (!cell) return;
+        const { r: nr, c: nc } = cell;
+        const d = dragRef.current;
+        if (!d.active) return;
+        if (nr === d.startR && nc === d.startC) return;
+        if (lastCellRef.current?.r === nr && lastCellRef.current?.c === nc) return;
+        lastCellRef.current = { r: nr, c: nc };
+        dragRef.current.hasMoved = true;
+        onCellChange(nr, nc, d.brush);
+      };
+      const onTouchEnd = (ev: TouchEvent) => {
+        if (ev.changedTouches[0]?.identifier !== touchId) return;
+        removeTouchListeners();
+        dragRef.current.active = false;
+        lastCellRef.current = null;
+      };
+
+      document.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+      document.addEventListener("touchend", onTouchEnd, { capture: true });
+      document.addEventListener("touchcancel", onTouchEnd, { capture: true });
+      touchListenersRef.current = { move: onTouchMove, end: onTouchEnd };
     },
-    [maxRowClues, maxColClues, clueSize, cellSize, gap, rows, cols]
+    [disabled, grid, getCellFromPoint, onCellChange, removeTouchListeners]
   );
 
   const handlePointerMove = useCallback(
@@ -232,9 +294,10 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
               type="button"
               disabled={disabled}
               onPointerDown={(e) => {
-                e.preventDefault();
                 handlePointerDown(e, r, c);
               }}
+              onContextMenu={(e) => e.preventDefault()}
+              onTouchStart={(e) => handleTouchStart(e, r, c)}
               onPointerEnter={() => handlePointerEnter(r, c)}
               className={`
                 min-w-0 min-h-0 border border-white/10 transition touch-none
