@@ -14,7 +14,7 @@ export async function POST(
   }
   const uid = typeof userId === "string" ? userId : "anon";
   const name = typeof username === "string" ? username : "Player";
-  recordFinished(roomId, uid, name, timeMs);
+  await recordFinished(roomId, uid, name, timeMs);
   broadcastFinished(roomId, { userId: uid, username: name, timeMs });
   return NextResponse.json({ ok: true });
 }

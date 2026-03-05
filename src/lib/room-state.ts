@@ -1,53 +1,124 @@
 /**
- * In-memory room state: game start time, host, members (with usernames), and finished times for reload.
- * Serverless: may not persist across instances; best-effort.
+ * Room state: game start time, host, members, finished. Uses Upstash Redis when
+ * UPSTASH_REDIS_REST_URL is set (e.g. Vercel + Upstash integration); falls back to in-memory for local dev.
  */
 export type FinishedEntry = { userId: string; username: string; timeMs: number };
 export type MemberEntry = { userId: string; username: string };
 
-type RoomData = {
+export type RoomData = {
   startedAt?: number;
   hostUserId: string | null;
-  creatorUserId: string | null; // first person to join with host=1; they always get host when in room
+  creatorUserId: string | null;
   members: MemberEntry[];
   finished: FinishedEntry[];
 };
 
-const roomState = new Map<string, RoomData>();
+const ROOM_KEY_PREFIX = "nono:room:";
+const defaultRoom = (): RoomData => ({
+  hostUserId: null,
+  creatorUserId: null,
+  members: [],
+  finished: [],
+});
 
-function getOrCreate(roomId: string): RoomData {
-  let data = roomState.get(roomId);
-  if (!data) {
-    data = { hostUserId: null, creatorUserId: null, members: [], finished: [] };
-    roomState.set(roomId, data);
+// In-memory fallback when Upstash env vars are not set (e.g. local dev)
+const memoryStore = new Map<string, RoomData>();
+
+function roomKey(roomId: string): string {
+  return `${ROOM_KEY_PREFIX}${roomId}`;
+}
+
+function useUpstash(): boolean {
+  return !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
+let redisClient: Awaited<ReturnType<typeof createRedis>> | null = null;
+
+async function createRedis() {
+  const { Redis } = await import("@upstash/redis");
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL!,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+  });
+}
+
+async function getRedis(): Promise<Awaited<ReturnType<typeof createRedis>> | null> {
+  if (!useUpstash()) return null;
+  if (redisClient) return redisClient;
+  try {
+    redisClient = await createRedis();
+    return redisClient;
+  } catch {
+    return null;
   }
-  return data;
 }
 
-export function setRoomStarted(roomId: string, startedAt: number): void {
-  const data = getOrCreate(roomId);
+async function getRoomRaw(roomId: string): Promise<RoomData | null> {
+  const redis = await getRedis();
+  if (redis) {
+    try {
+      const data = await redis.get<RoomData>(roomKey(roomId));
+      return (data ?? null) as RoomData | null;
+    } catch {
+      return memoryStore.get(roomId) ?? null;
+    }
+  }
+  return memoryStore.get(roomId) ?? null;
+}
+
+async function setRoomRaw(roomId: string, data: RoomData): Promise<void> {
+  const copy: RoomData = {
+    ...data,
+    members: [...data.members],
+    finished: [...data.finished],
+  };
+  const redis = await getRedis();
+  if (redis) {
+    try {
+      await redis.set(roomKey(roomId), copy);
+      return;
+    } catch {
+      memoryStore.set(roomId, copy);
+      return;
+    }
+  }
+  memoryStore.set(roomId, copy);
+}
+
+async function getOrCreate(roomId: string): Promise<RoomData> {
+  const data = await getRoomRaw(roomId);
+  if (data) return data;
+  const newRoom = defaultRoom();
+  await setRoomRaw(roomId, newRoom);
+  return newRoom;
+}
+
+export async function setRoomStarted(roomId: string, startedAt: number): Promise<void> {
+  const data = await getOrCreate(roomId);
   data.startedAt = startedAt;
+  await setRoomRaw(roomId, data);
 }
 
-export function recordFinished(
+export async function recordFinished(
   roomId: string,
   userId: string,
   username: string,
   timeMs: number
-): void {
-  const data = getOrCreate(roomId);
+): Promise<void> {
+  const data = await getOrCreate(roomId);
   const existing = data.finished.findIndex((e) => e.userId === userId);
   if (existing >= 0) data.finished[existing] = { userId, username, timeMs };
   else data.finished.push({ userId, username, timeMs });
+  await setRoomRaw(roomId, data);
 }
 
-export function getRoomState(roomId: string): {
+export async function getRoomState(roomId: string): Promise<{
   startedAt: number | null;
   hostUserId: string | null;
   members: MemberEntry[];
   finished: FinishedEntry[];
-} | null {
-  const data = roomState.get(roomId);
+} | null> {
+  const data = await getRoomRaw(roomId);
   if (!data) return null;
   return {
     startedAt: data.startedAt ?? null,
@@ -57,14 +128,14 @@ export function getRoomState(roomId: string): {
   };
 }
 
-/** Add member with username. Room creator (first claimHost) always gets host when they join; others with host=1 cannot steal it. If no host yet and no claimHost, first joiner becomes host. */
-export function addMember(
+/** Add member. Only room creator (first claimHost) is ever host. */
+export async function addMember(
   roomId: string,
   userId: string,
   claimHost: boolean,
   username: string
-): { isHost: boolean } {
-  const data = getOrCreate(roomId);
+): Promise<{ isHost: boolean }> {
+  const data = await getOrCreate(roomId);
   const existing = data.members.findIndex((m) => m.userId === userId);
   const entry = { userId, username: username || "Player" };
   if (existing >= 0) data.members[existing] = entry;
@@ -74,25 +145,23 @@ export function addMember(
       data.creatorUserId = userId;
       data.hostUserId = userId;
     } else if (data.creatorUserId === userId) {
-      data.hostUserId = userId; // creator rejoined (e.g. refresh), give them host
+      data.hostUserId = userId;
     }
-    // else: someone else has host link, don't transfer
-  } else if (!data.hostUserId) {
-    data.hostUserId = userId; // first joiner without host link
   }
+  await setRoomRaw(roomId, data);
   return { isHost: data.hostUserId === userId };
 }
 
-/** Remove member; if they were host, assign next member as host. */
-export function removeMember(roomId: string, userId: string): void {
-  const data = roomState.get(roomId);
+/** Remove member. If host/creator left, assign next host to first remaining member. */
+export async function removeMember(roomId: string, userId: string): Promise<void> {
+  const data = await getRoomRaw(roomId);
   if (!data) return;
   const wasHost = data.hostUserId === userId;
+  const wasCreator = data.creatorUserId === userId;
   data.members = data.members.filter((m) => m.userId !== userId);
-  if (wasHost) {
+  if (wasHost || wasCreator) {
     data.hostUserId = data.members.length > 0 ? data.members[0].userId : null;
+    if (wasCreator) data.creatorUserId = null;
   }
-  if (data.creatorUserId === userId) {
-    data.creatorUserId = null;
-  }
+  await setRoomRaw(roomId, data);
 }

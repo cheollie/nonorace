@@ -17,11 +17,11 @@ export async function POST(
   const uid = typeof userId === "string" ? userId : "anon";
   const name = (typeof username === "string" ? username : "Player").trim() || "Player";
   if (!roomId) return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  const { isHost } = addMember(roomId, uid, host === true, name);
+  const { isHost } = await addMember(roomId, uid, host === true, name);
   if (typeof bodyFinishedMs === "number") {
-    recordFinished(roomId, uid, name, bodyFinishedMs);
+    await recordFinished(roomId, uid, name, bodyFinishedMs);
   }
-  const state = getRoomState(roomId);
+  const state = await getRoomState(roomId);
   const finishedEntry = state?.finished?.find((e) => e.userId === uid);
   broadcastJoin(roomId, {
     userId: uid,

@@ -153,23 +153,14 @@ export default function RoomPage() {
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [hasConfirmedUsername, setHasConfirmedUsername] = useState(false);
 
-  // On mount: when joining via link (no host=1) always show prompt so they can enter/confirm name. When host, only show if not confirmed this session.
+  // On mount: always show username prompt until user confirms on this page load (so host and joiner both get asked every time they open a room).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const confirmed = sessionStorage.getItem(USERNAME_CONFIRMED_KEY);
     const saved = getUsername();
     setUsernameState(saved);
-    const joiningViaLink = !isHostFromUrl;
-    if (joiningViaLink) {
-      setShowUsernamePrompt(true);
-      setHasConfirmedUsername(false);
-    } else if (confirmed) {
-      setHasConfirmedUsername(true);
-      setShowUsernamePrompt(false);
-    } else {
-      setShowUsernamePrompt(true);
-    }
-  }, [isHostFromUrl]);
+    setShowUsernamePrompt(true);
+    setHasConfirmedUsername(false);
+  }, []);
 
   const setUsername = useCallback((name: string) => {
     const v = (name || "Player").trim() || "Player";

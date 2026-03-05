@@ -7,7 +7,7 @@ export async function GET(
 ) {
   const { roomId } = await params;
   if (!roomId) return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  const state = getRoomState(roomId);
+  const state = await getRoomState(roomId);
   return NextResponse.json({
     startedAt: state?.startedAt ?? null,
     hostUserId: state?.hostUserId ?? null,

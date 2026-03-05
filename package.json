@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@upstash/redis": "^1.36.3",
     "next": "14.2.18",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0-rc2",
