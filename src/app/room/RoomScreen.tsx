@@ -89,10 +89,12 @@ export function RoomScreen({
   roomId,
   size,
   isHostFromUrl,
+  sizeReady = true,
 }: {
   roomId: string;
   size: Size;
   isHostFromUrl: boolean;
+  sizeReady?: boolean;
 }) {
   const router = useRouter();
   const [serverSize, setServerSize] = useState<number | null>(null);
@@ -119,6 +121,15 @@ export function RoomScreen({
       lastProgressSent.current = 0;
     }
   }, [effectiveSize, serverSize, size]);
+
+  // Keep grid dimensions in sync with puzzle (e.g. 2x2 room but grid was 10x10 from localStorage)
+  useEffect(() => {
+    setGrid((prev) => {
+      if (prev.length === effectiveSize && prev[0]?.length === effectiveSize) return prev;
+      lastProgressSent.current = 0;
+      return createEmptyGrid(effectiveSize, effectiveSize);
+    });
+  }, [effectiveSize]);
 
   // After mount: restore grid and game start from storage (client-only), only if dimensions match effectiveSize
   useEffect(() => {
@@ -289,12 +300,12 @@ export function RoomScreen({
     }) => {
       if (data?.startedAt != null) setGameStartedAt(data.startedAt);
       if (data?.size != null && VALID_SIZES.includes(data.size)) setServerSize(data.size);
-      // Ignore stale room-sync: if this state doesn't include us, it's from before we joined (e.g. other client joined first) and would wrongly un-host us and drop us from the list
       const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
-      if (weAreInRoom) {
-        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId ?? null);
-        if (Array.isArray(data?.members) || Array.isArray(data?.finished)) applyStateToPlayers(data);
+      if (data?.hostUserId !== undefined) {
+        if (data.hostUserId != null) setServerHostUserId(data.hostUserId);
+        else if (!weAreInRoom) setServerHostUserId(null);
       }
+      if (weAreInRoom && (Array.isArray(data?.members) || Array.isArray(data?.finished))) applyStateToPlayers(data);
     },
     [userId, setGameStartedAt, applyStateToPlayers]
   );
@@ -304,6 +315,7 @@ export function RoomScreen({
 
   useEffect(() => {
     if (!roomId || !hasConfirmedUsername || sentJoin.current) return;
+    if (isHostFromUrl && !sizeReady) return;
     sentJoin.current = true;
     const nameToSend = getUsername();
     fetch(`/api/room/${roomId}/join`, {
@@ -320,7 +332,7 @@ export function RoomScreen({
         if (stateData && !stateData.error) applyFullState(stateData);
       })
       .catch(() => {});
-  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, size, applyFullState]);
+  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, sizeReady, size, applyFullState]);
 
   useEffect(() => {
     if (gameStartedAt == null || !checkSolved(grid, puzzle)) return;

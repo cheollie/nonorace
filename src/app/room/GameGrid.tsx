@@ -312,8 +312,8 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
           </div>
         ))}
 
-        {grid.map((row, r) =>
-          row.map((cell, c) => (
+        {grid.slice(0, rows).map((row, r) =>
+          row.slice(0, cols).map((cell, c) => (
             <button
               key={`${r}-${c}`}
               type="button"

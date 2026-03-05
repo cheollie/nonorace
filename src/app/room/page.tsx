@@ -12,6 +12,7 @@ function RoomPageContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code")?.trim().toUpperCase() ?? "";
   const [initialSize, setInitialSize] = useState<Size>(10);
+  const [sizeReady, setSizeReady] = useState(false);
   const isHostFromUrl =
     searchParams.get("host") === "1" ||
     (typeof window !== "undefined" && !!sessionStorage.getItem(`nono-creator-${code}`));
@@ -36,10 +37,18 @@ function RoomPageContent() {
       const n = parseInt(stored, 10);
       if (n === 2 || n === 10 || n === 15 || n === 20) setInitialSize(n);
     }
+    setSizeReady(true);
   }, [code]);
 
   if (code) {
-    return <RoomScreen roomId={code} size={initialSize} isHostFromUrl={isHostFromUrl} />;
+    return (
+      <RoomScreen
+        roomId={code}
+        size={initialSize}
+        isHostFromUrl={isHostFromUrl}
+        sizeReady={sizeReady}
+      />
+    );
   }
 
   return (
