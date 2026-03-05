@@ -83,6 +83,8 @@ function UsernameForm({
   );
 }
 
+const VALID_SIZES: number[] = [2, 10, 15, 20];
+
 export function RoomScreen({
   roomId,
   size,
@@ -93,11 +95,13 @@ export function RoomScreen({
   isHostFromUrl: boolean;
 }) {
   const router = useRouter();
+  const [serverSize, setServerSize] = useState<number | null>(null);
+  const effectiveSize = (serverSize != null && VALID_SIZES.includes(serverSize) ? serverSize : size) as Size;
 
-  const puzzle = useMemo(() => generatePuzzle(roomId, size, size), [roomId, size]);
+  const puzzle = useMemo(() => generatePuzzle(roomId, effectiveSize, effectiveSize), [roomId, effectiveSize]);
 
   // Neutral initial state so server and client match (avoids hydration mismatch)
-  const [grid, setGrid] = useState<CellState[][]>(() => createEmptyGrid(size, size));
+  const [grid, setGrid] = useState<CellState[][]>(() => createEmptyGrid(effectiveSize, effectiveSize));
   const [gameStartedAt, setGameStartedAtState] = useState<number | null>(null);
   const setGameStartedAt = useCallback((value: number | null) => {
     setGameStartedAtState(value);
@@ -108,7 +112,15 @@ export function RoomScreen({
     }
   }, [roomId]);
 
-  // After mount: restore grid and game start from storage (client-only)
+  // When server sends a different size than URL, switch to server size and reset grid
+  useEffect(() => {
+    if (serverSize != null && serverSize !== size) {
+      setGrid(createEmptyGrid(effectiveSize, effectiveSize));
+      lastProgressSent.current = 0;
+    }
+  }, [effectiveSize, serverSize, size]);
+
+  // After mount: restore grid and game start from storage (client-only), only if dimensions match effectiveSize
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -116,7 +128,7 @@ export function RoomScreen({
       const raw = localStorage.getItem(key);
       if (raw) {
         const data = JSON.parse(raw) as { rows: number; cols: number; grid: CellState[][] };
-        if (data.rows === size && data.cols === size && Array.isArray(data.grid) && data.grid.length === size && data.grid[0]?.length === size) {
+        if (data.rows === effectiveSize && data.cols === effectiveSize && Array.isArray(data.grid) && data.grid.length === effectiveSize && data.grid[0]?.length === effectiveSize) {
           setGrid(data.grid);
           lastProgressSent.current = 0;
         }
@@ -130,7 +142,7 @@ export function RoomScreen({
       const n = Number(s);
       if (!Number.isNaN(n)) setGameStartedAtState(n);
     }
-  }, [roomId, size]);
+  }, [roomId, effectiveSize]);
 
   const [serverHostUserId, setServerHostUserId] = useState<string | null>(null);
   const [finishedTime, setFinishedTime] = useState<number | null>(null);
@@ -189,7 +201,7 @@ export function RoomScreen({
     gridSaveRef.current = setTimeout(() => {
       const key = `nono-grid-${roomId}`;
       try {
-        localStorage.setItem(key, JSON.stringify({ rows: size, cols: size, grid }));
+        localStorage.setItem(key, JSON.stringify({ rows: effectiveSize, cols: effectiveSize, grid }));
       } catch {
         /* ignore */
       }
@@ -198,7 +210,7 @@ export function RoomScreen({
     return () => {
       if (gridSaveRef.current) clearTimeout(gridSaveRef.current);
     };
-  }, [roomId, size, grid]);
+  }, [roomId, effectiveSize, grid]);
 
   useEffect(() => {
     if (gameStartedAt == null) {
@@ -270,11 +282,13 @@ export function RoomScreen({
   const applyFullState = useCallback(
     (data: {
       startedAt?: number | null;
+      size?: number | null;
       hostUserId?: string | null;
       members?: { userId: string; username: string }[];
       finished?: { userId: string; username: string; timeMs: number }[];
     }) => {
       if (data?.startedAt != null) setGameStartedAt(data.startedAt);
+      if (data?.size != null && VALID_SIZES.includes(data.size)) setServerSize(data.size);
       // Ignore stale room-sync: if this state doesn't include us, it's from before we joined (e.g. other client joined first) and would wrongly un-host us and drop us from the list
       const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
       if (weAreInRoom) {
@@ -295,7 +309,7 @@ export function RoomScreen({
     fetch(`/api/room/${roomId}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, username: nameToSend, host: isHostFromUrl }),
+      body: JSON.stringify({ userId, username: nameToSend, host: isHostFromUrl, size }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -306,7 +320,7 @@ export function RoomScreen({
         if (stateData && !stateData.error) applyFullState(stateData);
       })
       .catch(() => {});
-  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, applyFullState]);
+  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, size, applyFullState]);
 
   useEffect(() => {
     if (gameStartedAt == null || !checkSolved(grid, puzzle)) return;
@@ -394,7 +408,7 @@ export function RoomScreen({
         });
       },
       (data: { hostUserId: string | null }) => setServerHostUserId(data.hostUserId),
-      (data: { startedAt: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
+      (data: { startedAt: number | null; size?: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
         applyFullStateRef.current(data);
       },
       () => {
@@ -413,7 +427,7 @@ export function RoomScreen({
   // Poll room state so player lists and game updates sync even if Pusher misses events or is unavailable
   useEffect(() => {
     if (!roomId || !hasConfirmedUsername) return;
-    const POLL_MS = 2500;
+    const POLL_MS = 1500;
     const poll = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetch(`/api/room/${roomId}/state`)
@@ -494,7 +508,7 @@ export function RoomScreen({
     }).catch(() => {});
   }, [grid, puzzle, gameStartedAt, finishedTime, roomId, userId, usernameOrFallback]);
 
-  const roomLink = typeof window !== "undefined" ? `${window.location.origin}/room?code=${roomId}&size=${size}` : "";
+  const roomLink = typeof window !== "undefined" ? `${window.location.origin}/room?code=${roomId}` : "";
   const canPlay = gameStartedAt != null;
   const playerList = Object.entries(players);
   const finishedList = playerList
@@ -532,7 +546,7 @@ export function RoomScreen({
             </button>
             <span className="text-gray-500">|</span>
             <span className="text-sm text-gray-400">
-              Room: {roomId} · {size}×{size}
+              Room: {roomId} · {effectiveSize}×{effectiveSize}
               {isHost && <span className="ml-1 text-rose-400">(Host)</span>}
             </span>
             <button type="button" onClick={() => setShowHowToPlay((v) => !v)} className="text-gray-400 hover:text-white transition w-8 h-8 rounded-full flex items-center justify-center border border-white/20 hover:bg-white/10" title="How to play">?</button>

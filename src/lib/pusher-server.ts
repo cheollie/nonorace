@@ -67,6 +67,7 @@ export function broadcastRoomSync(
     members: { userId: string; username: string }[];
     hostUserId: string | null;
     startedAt: number | null;
+    size: number | null;
     finished: { userId: string; username: string; timeMs: number }[];
   }
 ) {

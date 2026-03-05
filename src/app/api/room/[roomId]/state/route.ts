@@ -10,6 +10,7 @@ export async function GET(
   const state = await getRoomState(roomId);
   return NextResponse.json({
     startedAt: state?.startedAt ?? null,
+    size: state?.size ?? null,
     hostUserId: state?.hostUserId ?? null,
     finished: state?.finished ?? [],
     members: state?.members ?? [],

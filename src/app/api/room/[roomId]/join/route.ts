@@ -8,16 +8,17 @@ export async function POST(
 ) {
   const { roomId } = await params;
   const body = await _req.json().catch(() => ({}));
-  const { userId, username, host, finishedTimeMs: bodyFinishedMs } = body as {
+  const { userId, username, host, size: bodySize, finishedTimeMs: bodyFinishedMs } = body as {
     userId?: string;
     username?: string;
     host?: boolean;
+    size?: number;
     finishedTimeMs?: number;
   };
   const uid = typeof userId === "string" ? userId : "anon";
   const name = (typeof username === "string" ? username : "Player").trim() || "Player";
   if (!roomId) return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  const { isHost } = await addMember(roomId, uid, host === true, name);
+  const { isHost } = await addMember(roomId, uid, host === true, name, bodySize);
   if (typeof bodyFinishedMs === "number") {
     await recordFinished(roomId, uid, name, bodyFinishedMs);
   }
@@ -33,11 +34,13 @@ export async function POST(
     members: state?.members ?? [],
     hostUserId: state?.hostUserId ?? null,
     startedAt: state?.startedAt ?? null,
+    size: state?.size ?? null,
     finished: state?.finished ?? [],
   });
   return NextResponse.json({
     ok: true,
     startedAt: state?.startedAt ?? null,
+    size: state?.size ?? null,
     hostUserId: state?.hostUserId ?? null,
     isHost,
     finished: state?.finished ?? [],

@@ -7,6 +7,7 @@ export type MemberEntry = { userId: string; username: string };
 
 export type RoomData = {
   startedAt?: number;
+  size: number | null;
   hostUserId: string | null;
   creatorUserId: string | null;
   members: MemberEntry[];
@@ -17,6 +18,7 @@ const ROOM_KEY_PREFIX = "nono:room:";
 const defaultRoom = (): RoomData => ({
   hostUserId: null,
   creatorUserId: null,
+  size: null,
   members: [],
   finished: [],
 });
@@ -115,6 +117,7 @@ export async function recordFinished(
 
 export async function getRoomState(roomId: string): Promise<{
   startedAt: number | null;
+  size: number | null;
   hostUserId: string | null;
   members: MemberEntry[];
   finished: FinishedEntry[];
@@ -123,24 +126,27 @@ export async function getRoomState(roomId: string): Promise<{
   if (!data) return null;
   return {
     startedAt: data.startedAt ?? null,
+    size: data.size ?? null,
     hostUserId: data.hostUserId,
     members: [...data.members],
     finished: [...data.finished],
   };
 }
 
-/** Add member. Only room creator (first claimHost) is ever host. */
+const VALID_SIZES = [2, 10, 15, 20] as const;
+
+/** Add member. Only room creator (first claimHost) is ever host. Size is set when creator first joins. */
 export async function addMember(
   roomId: string,
   userId: string,
   claimHost: boolean,
-  username: string
+  username: string,
+  size?: number
 ): Promise<{ isHost: boolean }> {
   const data = await getOrCreate(roomId);
   const existing = data.members.findIndex((m) => m.userId === userId);
   const name = (username && username.trim() !== "" && username.trim() !== "Player") ? username.trim() : "Player";
   if (existing >= 0) {
-    // Don't overwrite existing member's name with "Player" (e.g. from a spurious re-join or Strict Mode double-mount)
     const keep = data.members[existing];
     data.members[existing] = { userId, username: name !== "Player" ? name : keep.username };
   } else {
@@ -150,6 +156,9 @@ export async function addMember(
     if (!data.creatorUserId) {
       data.creatorUserId = userId;
       data.hostUserId = userId;
+      if (typeof size === "number" && VALID_SIZES.includes(size as (typeof VALID_SIZES)[number])) {
+        data.size = size;
+      }
     } else if (data.creatorUserId === userId) {
       data.hostUserId = userId;
     }

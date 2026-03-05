@@ -14,33 +14,29 @@ export default function HomePage() {
 
   const createRoom = useCallback(() => {
     const code = generateRoomCode(6);
-    router.push(`/room?code=${code}&size=${size}&host=1`);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`nono-creator-${code}`, "1");
+      sessionStorage.setItem(`nono-room-size-${code}`, String(size));
+    }
+    router.push(`/room?code=${code}`);
   }, [size, router]);
 
   const joinRoom = useCallback(() => {
     const raw = joinInput.trim();
     let code: string;
-    let joinSize: number = 10;
     try {
       if (raw.startsWith("http")) {
         const u = new URL(raw);
-        code = u.searchParams.get("code") ?? "";
-        joinSize = Math.min(20, Math.max(2, parseInt(u.searchParams.get("size") ?? "10", 10) || 10));
-        if (!code && u.pathname.includes("/room/")) {
-          const pathRoom = u.pathname.split("/").filter(Boolean);
-          code = pathRoom[pathRoom.length - 1] ?? "";
-        }
+        code = (u.searchParams.get("code") ?? "").trim().toUpperCase();
       } else {
         code = raw.replace(/\s/g, "").toUpperCase();
-        joinSize = size;
       }
       if (!code) return;
-      if (![2, 10, 15, 20].includes(joinSize)) joinSize = 10;
-      router.push(`/room?code=${code}&size=${joinSize}`);
+      router.push(`/room?code=${code}`);
     } catch {
-      if (raw) router.push(`/room?code=${raw.replace(/\s/g, "").toUpperCase()}&size=${size}`);
+      if (raw) router.push(`/room?code=${raw.replace(/\s/g, "").toUpperCase()}`);
     }
-  }, [joinInput, size, router]);
+  }, [joinInput, router]);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">

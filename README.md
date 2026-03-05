@@ -14,8 +14,8 @@ Nonorace is that: same puzzle, shared timer, winner takes the bragging rights.
 
 ## Features
 
-- **Daily** — One puzzle per size (2×2, 10×10, 15×15, 20×20) per day (UTC). Date-seeded, no server storage. Copy-paste your score; state is saved in the browser per size.
-- **Multiplayer 1v1** — Create a room, pick grid size, share the link. Host starts the game; everyone sees the same puzzle and timer. First to complete correctly wins. Closing the tab counts as leaving the room.
+- **Daily** — One puzzle per size (2×2, 10×10, 15×15, 20×20) per day (Eastern). Date-seeded, no server storage. Copy-paste your score; state is saved in the browser per size.
+- **Multiplayer 1v1** — Create a room, pick grid size, share the room code (or link). Host starts the game; everyone sees the same puzzle and timer. First to complete correctly wins. Closing the tab counts as leaving the room.
 - **No account** — Optional username; player id is stored in the browser. Rooms are ephemeral (see Technical notes).
 
 ---
@@ -72,15 +72,15 @@ If these are missing, the app falls back to in-memory state (fine for single-ins
 ## Technical overview
 
 - **Stack**: Next.js 14 (App Router), TypeScript, Tailwind. Real-time: **Pusher** (Channels). Room state: **Upstash Redis** (or in-memory fallback).
-- **Room state** (host, members, game started, finished times) is stored in Redis under keys `nono:room:<roomId>`. All API routes (join, leave, start, progress, finished, state) read/write that store so every serverless instance sees the same data.
-- **Host**: Only the person who created the room (link with `?host=1`) is host. They stay host until they leave; then the first remaining member becomes host. No “first joiner becomes host” — host is only set by the host link.
-- **Real-time**: Join, leave, start, progress, and finish are broadcast over Pusher (`room-<roomId>`). Clients subscribe and also refetch `GET /api/room/[roomId]/state` after join and on player-join so the UI always reflects server state (single source of truth).
+- **Room state** (size, host, members, game started, finished times) is stored in Redis under keys `nono:room:<roomId>`. Server is the source of truth; URL has only the room code (see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
+- **Host**: Creator is remembered in sessionStorage so their first join claims host; server sets host/creator. If host leaves, first remaining member becomes host. **Size**: Set when creator joins; stored in room state; everyone else gets it from `/state`. No size or host in URL. They stay host until they leave; then the first remaining member becomes host. No “(obsolete)” — host is only set by the host link.
+- **Real-time**: Join, leave, start, progress, finish broadcast over Pusher. Clients also poll `GET /api/room/[roomId]/state` every 1.5s.
 - **Puzzles**: Multiplayer uses a deterministic puzzle per room (seed from room id + size). Daily uses date + size; no DB, no persistence of puzzles.
 - **Grid / timer**: Grid is stored in `localStorage` per room; timer and “finished” state come from the server and Pusher. On reload, the app restores grid and refetches room state.
 
 ### Room flow (multiplayer)
 
-1. **Host** opens the create link (`/room/<id>?size=10&host=1`), confirms username, and joins. Server sets them as host and creator.
+1. **Host** clicks Create room (picks size on home) → navigate to `/room?code=XXXXXX`. They join with `host: true` and `size`; server creates room, sets size and host/creator.
 2. **Others** open the shared link (no `host=1`), confirm username, join. They appear in the host’s waiting list; they see the host and “Waiting for host to start…”
 3. Host clicks **Start game**. Server sets `startedAt`, broadcasts `game-start`. Everyone’s timer and grid unlock.
 4. Progress is sent to the server and broadcast so everyone can see completion %. First to finish with a correct grid wins; finish times are stored and broadcast.
@@ -90,9 +90,9 @@ If these are missing, the app falls back to in-memory state (fine for single-ins
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/api/room/[roomId]/join` | POST | Add member (body: `userId`, `username`, `host`). Returns state; server broadcasts join + host-changed + room-sync. |
+| `/api/room/[roomId]/join` | POST | Add member (body: `userId`, `username`, `host`, `size`). Creator's size stored. Returns state; broadcasts join + host-changed + room-sync. |
 | `/api/room/[roomId]/leave` | POST | Remove member (body: `userId`). Broadcasts player-left, host-changed, room-sync. |
-| `/api/room/[roomId]/state` | GET | Return current room state (startedAt, hostUserId, members, finished). |
+| `/api/room/[roomId]/state` | GET | Return room state (startedAt, size, hostUserId, members, finished). |
 | `/api/room/[roomId]/start` | POST | Set game started (body: `userId`). Only host. Broadcasts game-start. |
 | `/api/room/[roomId]/progress` | POST | Report completion % (body: `userId`, `username`, `percent`). Broadcasts progress. |
 | `/api/room/[roomId]/finished` | POST | Record finish time (body: `userId`, `username`, `timeMs`). Broadcasts finished. |

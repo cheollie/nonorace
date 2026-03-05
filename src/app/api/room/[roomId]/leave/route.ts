@@ -20,6 +20,7 @@ export async function POST(
     members: state?.members ?? [],
     hostUserId,
     startedAt: state?.startedAt ?? null,
+    size: state?.size ?? null,
     finished: state?.finished ?? [],
   });
   return NextResponse.json({ ok: true });
