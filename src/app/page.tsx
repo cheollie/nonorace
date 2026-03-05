@@ -41,13 +41,15 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
-      <h1 className="text-4xl font-bold text-center mb-2">Nonogram 1v1</h1>
-      <p className="text-gray-400 text-center mb-8">Create a room, send the link. Host starts when everyone’s in; shared timer, first to finish wins.</p>
+      <h1 className="text-4xl font-bold text-center mb-2">Nonorace</h1>
+      <p className="text-gray-400 text-center mb-8 max-w-md">
+        A nonogram (picross) game: use the row and column number clues to fill the grid.
+      </p>
 
       <div className="w-full max-w-sm space-y-4">
-        <div className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
-          <p className="text-sm text-gray-400 mb-2">Daily</p>
-          <p className="text-xs text-gray-500 mb-2">One puzzle per size per day (UTC). Share your time.</p>
+        <section className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
+          <h2 className="text-sm font-medium text-gray-300 mb-2">Daily</h2>
+          <p className="text-xs text-gray-500 mb-2">One puzzle per size per day (UTC). Play solo and share your time.</p>
           <div className="grid grid-cols-4 gap-2 mb-2">
             {SIZES.map((s) => (
               <a
@@ -59,10 +61,12 @@ export default function HomePage() {
               </a>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div className="border-t border-white/10 pt-4">
-          <p className="text-sm text-gray-400 mb-2">Create room</p>
+        <section className="border-t border-white/10 pt-4">
+          <h2 className="text-sm font-medium text-gray-300 mb-2">Multiplayer</h2>
+          <p className="text-xs text-gray-500 mb-3">Create a room and share the link; host starts the timer. First to finish wins.</p>
+          <p className="text-xs text-gray-500 mb-2">Create room</p>
           <div className="grid grid-cols-4 gap-2 mb-3">
             {SIZES.map((s) => (
               <button
@@ -80,10 +84,7 @@ export default function HomePage() {
           >
             Create room
           </button>
-        </div>
-
-        <div className="border-t border-white/10 pt-4">
-          <p className="text-sm text-gray-400 mb-2">Join with link</p>
+          <p className="text-xs text-gray-500 mb-2 mt-4">Join with link</p>
           <input
             type="text"
             placeholder="Paste room link or room ID"
@@ -97,7 +98,7 @@ export default function HomePage() {
           >
             Join room
           </button>
-        </div>
+        </section>
       </div>
     </main>
   );

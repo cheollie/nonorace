@@ -135,7 +135,7 @@ export default function DailyPage() {
   const timeMs = finishedTime ?? (gameStartedAt != null ? Date.now() - gameStartedAt : 0);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const copyText = [
-    `✨ Daily Nonogram · ${dateStr} · ${size}×${size}`,
+    `✨ Nonorace Daily · ${dateStr} · ${size}×${size}`,
     `Finished in ${formatTime(timeMs)} 🎉`,
     origin ? `Play at ${origin}` : "",
   ]
