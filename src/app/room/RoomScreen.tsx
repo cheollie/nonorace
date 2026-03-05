@@ -118,7 +118,6 @@ export function RoomScreen({
   useEffect(() => {
     if (serverSize != null && serverSize !== size) {
       setGrid(createEmptyGrid(effectiveSize, effectiveSize));
-      lastProgressSent.current = 0;
     }
   }, [effectiveSize, serverSize, size]);
 
@@ -126,7 +125,6 @@ export function RoomScreen({
   useEffect(() => {
     setGrid((prev) => {
       if (prev.length === effectiveSize && prev[0]?.length === effectiveSize) return prev;
-      lastProgressSent.current = 0;
       return createEmptyGrid(effectiveSize, effectiveSize);
     });
   }, [effectiveSize]);
@@ -141,7 +139,6 @@ export function RoomScreen({
         const data = JSON.parse(raw) as { rows: number; cols: number; grid: CellState[][] };
         if (data.rows === effectiveSize && data.cols === effectiveSize && Array.isArray(data.grid) && data.grid.length === effectiveSize && data.grid[0]?.length === effectiveSize) {
           setGrid(data.grid);
-          lastProgressSent.current = 0;
         }
       }
     } catch {
@@ -160,8 +157,11 @@ export function RoomScreen({
   const [displayTimeMs, setDisplayTimeMs] = useState(0);
   const [players, setPlayers] = useState<Record<string, PlayerState>>({});
   const sentJoin = useRef(false);
-  const lastProgressSent = useRef(0);
   const lastPercentRef = useRef(0);
+  const gridRef = useRef<CellState[][]>([]);
+  const puzzleRef = useRef(puzzle);
+  gridRef.current = grid;
+  puzzleRef.current = puzzle;
 
   const USERNAME_CONFIRMED_KEY = "nono-username-confirmed";
 
@@ -236,19 +236,18 @@ export function RoomScreen({
     return () => clearInterval(t);
   }, [gameStartedAt, finishedTime]);
 
-  useEffect(() => {
+  const sendProgressOnRelease = useCallback(() => {
     if (!roomId || gameStartedAt == null || finishedTime != null) return;
-    const pct = progressPercent(grid, puzzle);
-    lastPercentRef.current = pct;
-    const now = Date.now();
-    if (now - lastProgressSent.current < 800) return;
-    lastProgressSent.current = now;
-    fetch(`/api/room/${roomId}/progress`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, username: getUsername(), percent: pct }),
-    }).catch(() => {});
-  }, [roomId, userId, grid, puzzle, gameStartedAt, finishedTime]);
+    setTimeout(() => {
+      const pct = progressPercent(gridRef.current, puzzleRef.current);
+      lastPercentRef.current = pct;
+      fetch(`/api/room/${roomId}/progress`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, username: getUsername(), percent: pct }),
+      }).catch(() => {});
+    }, 0);
+  }, [roomId, userId, gameStartedAt, finishedTime]);
 
   const applyStateToPlayers = useCallback(
     (data: {
@@ -620,7 +619,7 @@ export function RoomScreen({
         )}
 
         <div className={!canPlay ? "opacity-60 pointer-events-none" : ""}>
-          <GameGrid puzzle={puzzle} grid={grid} onCellChange={onCellChange} disabled={finishedTime != null} violations={getViolations(grid, puzzle)} />
+          <GameGrid puzzle={puzzle} grid={grid} onCellChange={onCellChange} onInteractionEnd={sendProgressOnRelease} disabled={finishedTime != null} violations={getViolations(grid, puzzle)} />
         </div>
 
         {canPlay && playerList.length > 0 && (

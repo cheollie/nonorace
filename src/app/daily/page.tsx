@@ -29,7 +29,10 @@ function getTodayET(): string {
 }
 
 function formatTime(ms: number): string {
-  return `${Math.floor(ms / 60000)}:${(Math.floor(ms / 1000) % 60).toString().padStart(2, "0")}.${Math.floor(ms / 100) % 10}`;
+  const sec = Math.floor(ms / 1000) % 60;
+  const tenths = Math.floor((ms % 1000) / 100);
+  const hundredths = Math.floor((ms % 100) / 10);
+  return `${Math.floor(ms / 60000)}:${sec.toString().padStart(2, "0")}.${tenths}${hundredths}`;
 }
 
 function DailyContent() {
@@ -114,17 +117,21 @@ function DailyContent() {
     return () => clearInterval(t);
   }, [gameStartedAt, finishedTime]);
 
+  const onInteractionStart = useCallback(() => {
+    if (finishedTime != null) return;
+    if (gameStartedAt == null) setGameStartedAt(Date.now());
+  }, [finishedTime, gameStartedAt, setGameStartedAt]);
+
   const onCellChange = useCallback(
     (r: number, c: number, state: CellState) => {
       if (finishedTime != null) return;
-      if (gameStartedAt == null) setGameStartedAt(Date.now());
       setGrid((prev) =>
         prev.map((row, i) =>
           i === r ? row.map((cell, j) => (j === c ? state : cell)) : row
         )
       );
     },
-    [gameStartedAt, finishedTime, setGrid, setGameStartedAt]
+    [finishedTime, setGrid]
   );
 
   useEffect(() => {
@@ -210,6 +217,7 @@ function DailyContent() {
             puzzle={puzzle}
             grid={grid}
             onCellChange={onCellChange}
+            onInteractionStart={onInteractionStart}
             disabled={isDone}
             violations={getViolations(grid, puzzle)}
           />

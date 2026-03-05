@@ -22,11 +22,13 @@ interface GameGridProps {
   puzzle: NonogramPuzzle;
   grid: CellState[][];
   onCellChange: (r: number, c: number, state: CellState) => void;
+  onInteractionStart?: () => void;
+  onInteractionEnd?: () => void;
   disabled?: boolean;
   violations?: { rowIndices: number[]; colIndices: number[] };
 }
 
-export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: GameGridProps) {
+export function GameGrid({ puzzle, grid, onCellChange, onInteractionStart, onInteractionEnd, disabled, violations }: GameGridProps) {
   const { rows, cols, rowClues, colClues } = puzzle;
   const maxRowClues = Math.max(1, ...rowClues.map((c) => c.length));
   const maxColClues = Math.max(1, ...colClues.map((c) => c.length));
@@ -109,6 +111,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
 
   const handlePointerDown = (e: React.PointerEvent, r: number, c: number) => {
     if (disabled) return;
+    onInteractionStart?.();
     // Touch: use touch path only. iOS has a WebKit bug where setPointerCapture doesn't dispatch
     // pointer events outside the element, so drag would break. See MDN Pointer events + touch fallback.
     if (e.pointerType === "touch") return;
@@ -148,6 +151,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
       dragRef.current.active = false;
       lastCellRef.current = null;
       gridRef.current?.releasePointerCapture(pid);
+      onInteractionEnd?.();
     };
 
     const target = gridRef.current;
@@ -176,6 +180,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
     dragRef.current.active = false;
     lastCellRef.current = null;
     gridRef.current?.releasePointerCapture(d.pointerId);
+    onInteractionEnd?.();
   };
 
   const handleTouchStart = useCallback(
@@ -183,6 +188,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
       if (disabled) return;
       if (dragRef.current.active) return;
       if (e.touches.length !== 1) return;
+      onInteractionStart?.();
       e.preventDefault();
       const current = grid[r][c];
       const brush: CellState = cycle(current);
@@ -212,6 +218,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
         removeTouchListeners();
         dragRef.current.active = false;
         lastCellRef.current = null;
+        onInteractionEnd?.();
       };
 
       document.addEventListener("touchmove", onTouchMove as EventListener, { capture: true, passive: false });
@@ -219,7 +226,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
       document.addEventListener("touchcancel", onTouchEnd as EventListener, { capture: true });
       touchListenersRef.current = { move: onTouchMove, end: onTouchEnd };
     },
-    [disabled, grid, getCellFromPoint, onCellChange, removeTouchListeners]
+    [disabled, grid, getCellFromPoint, onCellChange, onInteractionStart, onInteractionEnd, removeTouchListeners]
   );
 
   const handlePointerMove = useCallback(
