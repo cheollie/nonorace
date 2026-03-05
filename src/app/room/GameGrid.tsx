@@ -40,18 +40,56 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
     hasMoved: false,
     pointerId: 0,
   });
+  const docListenersRef = useRef<{ move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null>(null);
 
   const rowSet = new Set(violations?.rowIndices ?? []);
   const colSet = new Set(violations?.colIndices ?? []);
 
+  const removeDocListeners = useCallback(() => {
+    const L = docListenersRef.current;
+    if (!L) return;
+    document.removeEventListener("pointermove", L.move, { capture: true });
+    document.removeEventListener("pointerup", L.up, { capture: true });
+    document.removeEventListener("pointercancel", L.up, { capture: true });
+    docListenersRef.current = null;
+  }, []);
+
   const handlePointerDown = (e: React.PointerEvent, r: number, c: number) => {
     if (disabled) return;
+    e.preventDefault();
     const current = grid[r][c];
     const brush: CellState = cycle(current);
     lastCellRef.current = null;
     dragRef.current = { active: true, brush, startR: r, startC: c, hasMoved: false, pointerId: e.pointerId };
     onCellChange(r, c, brush);
     gridRef.current?.setPointerCapture(e.pointerId);
+
+    const onDocMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== dragRef.current.pointerId || !dragRef.current.active) return;
+      ev.preventDefault();
+      const cell = getCellFromPoint(ev.clientX, ev.clientY);
+      if (!cell) return;
+      const { r: nr, c: nc } = cell;
+      const d = dragRef.current;
+      if (nr === d.startR && nc === d.startC) return;
+      if (lastCellRef.current?.r === nr && lastCellRef.current?.c === nc) return;
+      lastCellRef.current = { r: nr, c: nc };
+      dragRef.current.hasMoved = true;
+      onCellChange(nr, nc, d.brush);
+    };
+    const onDocUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== dragRef.current.pointerId) return;
+      const pid = dragRef.current.pointerId;
+      removeDocListeners();
+      dragRef.current.active = false;
+      lastCellRef.current = null;
+      gridRef.current?.releasePointerCapture(pid);
+    };
+
+    document.addEventListener("pointermove", onDocMove, { capture: true, passive: false });
+    document.addEventListener("pointerup", onDocUp, { capture: true });
+    document.addEventListener("pointercancel", onDocUp, { capture: true });
+    docListenersRef.current = { move: onDocMove, up: onDocUp };
   };
 
   const handlePointerEnter = (r: number, c: number) => {
@@ -66,6 +104,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
   const handlePointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
     if (!d.active || e.pointerId !== d.pointerId) return;
+    removeDocListeners();
     dragRef.current.active = false;
     lastCellRef.current = null;
     gridRef.current?.releasePointerCapture(d.pointerId);
