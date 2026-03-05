@@ -1,5 +1,6 @@
 "use client";
 
+import { generateRoomCode } from "@/lib/room-code";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
@@ -12,30 +13,32 @@ export default function HomePage() {
   const [size, setSize] = useState<Size>(10);
 
   const createRoom = useCallback(() => {
-    const roomId = crypto.randomUUID();
-    router.push(`/room/${roomId}?size=${size}&host=1`);
+    const code = generateRoomCode(6);
+    router.push(`/room?code=${code}&size=${size}&host=1`);
   }, [size, router]);
 
   const joinRoom = useCallback(() => {
     const raw = joinInput.trim();
-    // Allow pasting full URL or just room id
-    let roomId: string;
+    let code: string;
     let joinSize: number = 10;
     try {
       if (raw.startsWith("http")) {
         const u = new URL(raw);
-        const pathRoom = u.pathname.split("/").filter(Boolean);
-        roomId = pathRoom[pathRoom.length - 1] ?? "";
+        code = u.searchParams.get("code") ?? "";
         joinSize = Math.min(20, Math.max(2, parseInt(u.searchParams.get("size") ?? "10", 10) || 10));
+        if (!code && u.pathname.includes("/room/")) {
+          const pathRoom = u.pathname.split("/").filter(Boolean);
+          code = pathRoom[pathRoom.length - 1] ?? "";
+        }
       } else {
-        roomId = raw;
+        code = raw.replace(/\s/g, "").toUpperCase();
         joinSize = size;
       }
-      if (!roomId) return;
+      if (!code) return;
       if (![2, 10, 15, 20].includes(joinSize)) joinSize = 10;
-      router.push(`/room/${roomId}?size=${joinSize}`);
+      router.push(`/room?code=${code}&size=${joinSize}`);
     } catch {
-      if (raw) router.push(`/room/${raw}?size=${size}`);
+      if (raw) router.push(`/room?code=${raw.replace(/\s/g, "").toUpperCase()}&size=${size}`);
     }
   }, [joinInput, size, router]);
 
@@ -84,10 +87,10 @@ export default function HomePage() {
           >
             Create room
           </button>
-          <p className="text-xs text-gray-500 mb-2 mt-4">Join with link</p>
+          <p className="text-xs text-gray-500 mb-2 mt-4">Join with link or code</p>
           <input
             type="text"
-            placeholder="Paste room link or room ID"
+            placeholder="Paste link or enter code (e.g. ABCDEF)"
             value={joinInput}
             onChange={(e) => setJoinInput(e.target.value)}
             className="w-full px-4 py-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-rose-500 mb-2"

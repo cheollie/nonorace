@@ -1,4 +1,4 @@
-import { broadcastGameStart } from "@/lib/pusher-server";
+import { broadcastGameStart, broadcastRoomSync } from "@/lib/pusher-server";
 import { getRoomState, setRoomStarted } from "@/lib/room-state";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -16,6 +16,13 @@ export async function POST(
   }
   const startedAt = Date.now();
   await setRoomStarted(roomId, startedAt);
+  const stateAfter = await getRoomState(roomId);
   broadcastGameStart(roomId, { startedAt });
+  broadcastRoomSync(roomId, {
+    members: stateAfter?.members ?? [],
+    hostUserId: stateAfter?.hostUserId ?? null,
+    startedAt: stateAfter?.startedAt ?? null,
+    finished: stateAfter?.finished ?? [],
+  });
   return NextResponse.json({ ok: true, startedAt });
 }

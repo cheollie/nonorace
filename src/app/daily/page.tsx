@@ -8,7 +8,7 @@ import {
   type CellState,
   type NonogramPuzzle,
 } from "@/lib/nonogram";
-import { GameGrid } from "@/app/room/[roomId]/GameGrid";
+import { GameGrid } from "@/app/room/GameGrid";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";

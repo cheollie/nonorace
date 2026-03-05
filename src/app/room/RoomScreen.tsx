@@ -10,7 +10,7 @@ import {
   type NonogramPuzzle,
 } from "@/lib/nonogram";
 import { subscribeRoom } from "@/lib/pusher-client";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameGrid } from "./GameGrid";
 
@@ -22,13 +22,6 @@ type PlayerState = {
   percent: number | null;
   finishedTimeMs: number | null;
 };
-
-function getSize(searchParams: ReturnType<typeof useSearchParams>): Size {
-  const s = searchParams.get("size");
-  const n = s ? parseInt(s, 10) : 10;
-  if (SIZES.includes(n as Size)) return n as Size;
-  return 10;
-}
 
 function getUsername(): string {
   if (typeof window === "undefined") return "Player";
@@ -90,13 +83,16 @@ function UsernameForm({
   );
 }
 
-export default function RoomPage() {
-  const params = useParams();
-  const searchParams = useSearchParams();
+export function RoomScreen({
+  roomId,
+  size,
+  isHostFromUrl,
+}: {
+  roomId: string;
+  size: Size;
+  isHostFromUrl: boolean;
+}) {
   const router = useRouter();
-  const roomId = params.roomId as string;
-  const size = getSize(searchParams);
-  const isHostFromUrl = searchParams.get("host") === "1";
 
   const puzzle = useMemo(() => generatePuzzle(roomId, size, size), [roomId, size]);
 
@@ -147,13 +143,11 @@ export default function RoomPage() {
   const USERNAME_CONFIRMED_KEY = "nono-username-confirmed";
 
   const userId = getUserId();
-  // Use only server authority for host so we never show multiple hosts (e.g. when host link is shared or before state loads).
   const isHost = serverHostUserId === userId;
   const [username, setUsernameState] = useState("");
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [hasConfirmedUsername, setHasConfirmedUsername] = useState(false);
 
-  // On mount: always show username prompt until user confirms on this page load (so host and joiner both get asked every time they open a room).
   useEffect(() => {
     if (typeof window === "undefined") return;
     const saved = getUsername();
@@ -175,7 +169,6 @@ export default function RoomPage() {
 
   const usernameOrFallback = username || "Player";
 
-  // Add self to players once username is confirmed; preserve existing percent/finished so we don't wipe win state
   useEffect(() => {
     if (showUsernamePrompt) return;
     setPlayers((prev) => ({
@@ -188,7 +181,6 @@ export default function RoomPage() {
     }));
   }, [userId, usernameOrFallback, showUsernamePrompt]);
 
-  // Persist grid to localStorage (debounced)
   const gridSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -196,12 +188,9 @@ export default function RoomPage() {
     gridSaveRef.current = setTimeout(() => {
       const key = `nono-grid-${roomId}`;
       try {
-        localStorage.setItem(
-          key,
-          JSON.stringify({ rows: size, cols: size, grid })
-        );
+        localStorage.setItem(key, JSON.stringify({ rows: size, cols: size, grid }));
       } catch {
-        // ignore quota etc.
+        /* ignore */
       }
       gridSaveRef.current = null;
     }, 500);
@@ -210,7 +199,6 @@ export default function RoomPage() {
     };
   }, [roomId, size, grid]);
 
-  // Timer: only run after game start; use shared gameStartedAt
   useEffect(() => {
     if (gameStartedAt == null) {
       setDisplayTimeMs(0);
@@ -224,7 +212,6 @@ export default function RoomPage() {
     return () => clearInterval(t);
   }, [gameStartedAt, finishedTime]);
 
-  // Report progress (throttled) — only after game started
   useEffect(() => {
     if (!roomId || gameStartedAt == null || finishedTime != null) return;
     const pct = progressPercent(grid, puzzle);
@@ -239,7 +226,6 @@ export default function RoomPage() {
     }).catch(() => {});
   }, [roomId, userId, grid, puzzle, gameStartedAt, finishedTime]);
 
-  // Apply server state: replace player list with server's members (single source of truth), preserve percent/finishedTimeMs for live updates
   const applyStateToPlayers = useCallback(
     (data: {
       members?: { userId: string; username: string }[];
@@ -291,7 +277,9 @@ export default function RoomPage() {
     [setGameStartedAt, applyStateToPlayers]
   );
 
-  // Join room once after username confirmed; then always refetch /state so we have server truth (host, members)
+  const applyFullStateRef = useRef(applyFullState);
+  applyFullStateRef.current = applyFullState;
+
   useEffect(() => {
     if (!roomId || !hasConfirmedUsername || sentJoin.current) return;
     sentJoin.current = true;
@@ -299,11 +287,7 @@ export default function RoomPage() {
     fetch(`/api/room/${roomId}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId,
-        username: nameToSend,
-        host: isHostFromUrl,
-      }),
+      body: JSON.stringify({ userId, username: nameToSend, host: isHostFromUrl }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -316,7 +300,6 @@ export default function RoomPage() {
       .catch(() => {});
   }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, applyFullState]);
 
-  // Recompute win state whenever grid/game state updates (load, join, restore): if our grid is solved, show us as finished
   useEffect(() => {
     if (gameStartedAt == null || !checkSolved(grid, puzzle)) return;
     const timeMs =
@@ -335,14 +318,10 @@ export default function RoomPage() {
     setFinishedTime(timeMs);
     setPlayers((prev) => ({
       ...prev,
-      [userId]: {
-        ...(prev[userId] ?? { username: usernameOrFallback, percent: null }),
-        finishedTimeMs: timeMs,
-      },
+      [userId]: { ...(prev[userId] ?? { username: usernameOrFallback, percent: null }), finishedTimeMs: timeMs },
     }));
   }, [grid, puzzle, gameStartedAt, roomId, userId, usernameOrFallback, finishedTime]);
 
-  // Subscribe to room events
   useEffect(() => {
     if (!roomId) return;
     return subscribeRoom(
@@ -364,8 +343,7 @@ export default function RoomPage() {
       (data: { userId: string; username: string; finishedTimeMs?: number }) => {
         setPlayers((prev) => {
           const existing = prev[data.userId];
-          const finishedTimeMs =
-            data.finishedTimeMs ?? existing?.finishedTimeMs ?? null;
+          const finishedTimeMs = data.finishedTimeMs ?? existing?.finishedTimeMs ?? null;
           return {
             ...prev,
             [data.userId]: existing
@@ -377,40 +355,29 @@ export default function RoomPage() {
           fetch(`/api/room/${roomId}/progress`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              userId,
-              username: usernameOrFallback,
-              percent: lastPercentRef.current,
-            }),
+            body: JSON.stringify({ userId, username: usernameOrFallback, percent: lastPercentRef.current }),
           }).catch(() => {});
         }
-        // Refetch full state so we see everyone in the room (fixes race where we didn't have the other person yet)
         fetch(`/api/room/${roomId}/state`)
           .then((res) => res.json())
           .then((stateData) => {
-            if (stateData && !stateData.error) applyFullState(stateData);
+            if (stateData && !stateData.error) applyFullStateRef.current(stateData);
           })
           .catch(() => {});
       },
       (data) => {
         setPlayers((prev) => ({
           ...prev,
-          [data.userId]: {
-            ...(prev[data.userId] ?? { username: data.username, percent: null }),
-            finishedTimeMs: data.timeMs,
-          },
+          [data.userId]: { ...(prev[data.userId] ?? { username: data.username, percent: null }), finishedTimeMs: data.timeMs },
         }));
-        // Refetch authoritative state so we don't miss updates if Pusher was slow or we weren't subscribed yet
         fetch(`/api/room/${roomId}/state`)
           .then((res) => res.json())
           .then((stateData) => {
-            if (stateData && !stateData.error) applyFullState(stateData);
+            if (stateData && !stateData.error) applyFullStateRef.current(stateData);
           })
           .catch(() => {});
       },
-      (data) => {
-        setGameStartedAt(data.startedAt);
-      },
+      (data) => setGameStartedAt(data.startedAt),
       (data: { userId: string }) => {
         setPlayers((prev) => {
           const next = { ...prev };
@@ -418,16 +385,21 @@ export default function RoomPage() {
           return next;
         });
       },
-      (data: { hostUserId: string | null }) => {
-        setServerHostUserId(data.hostUserId);
-      },
+      (data: { hostUserId: string | null }) => setServerHostUserId(data.hostUserId),
       (data: { startedAt: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
-        applyFullState(data);
+        applyFullStateRef.current(data);
+      },
+      () => {
+        fetch(`/api/room/${roomId}/state`)
+          .then((res) => res.json())
+          .then((stateData) => {
+            if (stateData && !stateData.error) applyFullStateRef.current(stateData);
+          })
+          .catch(() => {});
       }
     );
-  }, [roomId, applyFullState, userId, usernameOrFallback]);
+  }, [roomId]);
 
-  // When tab becomes visible and game has started, refetch state so we don't show stale finish state if we missed a Pusher event
   useEffect(() => {
     if (!roomId || gameStartedAt == null) return;
     const onVisible = () => {
@@ -443,14 +415,11 @@ export default function RoomPage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [roomId, gameStartedAt, applyFullState]);
 
-  // When tab is closed or user navigates away, notify server so others see you leave
   useEffect(() => {
     if (!roomId || !userId) return;
     const leaveUrl = `/api/room/${roomId}/leave`;
     const payload = new Blob([JSON.stringify({ userId })], { type: "application/json" });
-    const onUnload = () => {
-      navigator.sendBeacon(leaveUrl, payload);
-    };
+    const onUnload = () => navigator.sendBeacon(leaveUrl, payload);
     window.addEventListener("pagehide", onUnload);
     window.addEventListener("beforeunload", onUnload);
     return () => {
@@ -475,16 +444,11 @@ export default function RoomPage() {
   const onCellChange = useCallback(
     (r: number, c: number, state: CellState) => {
       if (gameStartedAt == null || finishedTime != null) return;
-      setGrid((prev) =>
-        prev.map((row, i) =>
-          i === r ? row.map((cell, j) => (j === c ? state : cell)) : row
-        )
-      );
+      setGrid((prev) => prev.map((row, i) => (i === r ? row.map((cell, j) => (j === c ? state : cell)) : row)));
     },
     [gameStartedAt, finishedTime]
   );
 
-  // Check win state after every grid change (so we never miss a solve from stale state or rapid clicks)
   useEffect(() => {
     if (gameStartedAt == null || finishedTime != null || !checkSolved(grid, puzzle)) return;
     const timeMs = Date.now() - gameStartedAt;
@@ -492,14 +456,9 @@ export default function RoomPage() {
     setFinishedTime(timeMs);
     setPlayers((prev) => ({
       ...prev,
-      [userId]: {
-        ...(prev[userId] ?? { username: usernameOrFallback, percent: null }),
-        finishedTimeMs: timeMs,
-      },
+      [userId]: { ...(prev[userId] ?? { username: usernameOrFallback, percent: null }), finishedTimeMs: timeMs },
     }));
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(`nono-finished-${roomId}`, String(timeMs));
-    }
+    if (typeof window !== "undefined") sessionStorage.setItem(`nono-finished-${roomId}`, String(timeMs));
     fetch(`/api/room/${roomId}/finished`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -507,7 +466,7 @@ export default function RoomPage() {
     }).catch(() => {});
   }, [grid, puzzle, gameStartedAt, finishedTime, roomId, userId, usernameOrFallback]);
 
-  const roomLink = typeof window !== "undefined" ? `${window.location.origin}/room/${roomId}?size=${size}` : "";
+  const roomLink = typeof window !== "undefined" ? `${window.location.origin}/room?code=${roomId}&size=${size}` : "";
   const canPlay = gameStartedAt != null;
   const playerList = Object.entries(players);
   const finishedList = playerList
@@ -519,18 +478,12 @@ export default function RoomPage() {
 
   return (
     <main className="min-h-screen p-4 md:p-6">
-      {/* Username prompt when joining via link (no name set or still "Player") */}
       {showUsernamePrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-sm rounded-xl bg-[#1a1a2e] border border-white/20 p-6 shadow-xl">
             <h2 className="text-lg font-semibold text-white mb-2">What’s your name?</h2>
             <p className="text-sm text-gray-400 mb-4">So others in the room can see who joined.</p>
-            <UsernameForm
-              value={username}
-              onChange={setUsernameState}
-              onSubmit={setUsername}
-              onContinueAsPlayer={() => setUsername("Player")}
-            />
+            <UsernameForm value={username} onChange={setUsernameState} onSubmit={setUsername} onContinueAsPlayer={() => setUsername("Player")} />
           </div>
         </div>
       )}
@@ -538,17 +491,11 @@ export default function RoomPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-4 flex-wrap">
-            <a href="/" className="text-gray-400 hover:text-white transition">
-              ← Home
-            </a>
+            <a href="/" className="text-gray-400 hover:text-white transition">← Home</a>
             <button
               type="button"
               onClick={() => {
-                fetch(`/api/room/${roomId}/leave`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ userId }),
-                }).catch(() => {});
+                fetch(`/api/room/${roomId}/leave`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId }) }).catch(() => {});
                 router.push("/");
               }}
               className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-gray-300 transition"
@@ -557,29 +504,14 @@ export default function RoomPage() {
             </button>
             <span className="text-gray-500">|</span>
             <span className="text-sm text-gray-400">
-              Room: {roomId.slice(0, 8)}… · {size}×{size}
+              Room: {roomId} · {size}×{size}
               {isHost && <span className="ml-1 text-rose-400">(Host)</span>}
             </span>
-            <button
-              type="button"
-              onClick={() => setShowHowToPlay((v) => !v)}
-              className="text-gray-400 hover:text-white transition w-8 h-8 rounded-full flex items-center justify-center border border-white/20 hover:bg-white/10"
-              title="How to play"
-            >
-              ?
-            </button>
+            <button type="button" onClick={() => setShowHowToPlay((v) => !v)} className="text-gray-400 hover:text-white transition w-8 h-8 rounded-full flex items-center justify-center border border-white/20 hover:bg-white/10" title="How to play">?</button>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-lg font-mono tabular-nums text-white">
-              {gameStartedAt == null ? "—" : formatTime(displayTimeMs)}
-            </span>
-            <button
-              type="button"
-              onClick={() => roomLink && navigator.clipboard.writeText(roomLink)}
-              className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 transition"
-            >
-              Copy link
-            </button>
+            <span className="text-lg font-mono tabular-nums text-white">{gameStartedAt == null ? "—" : formatTime(displayTimeMs)}</span>
+            <button type="button" onClick={() => roomLink && navigator.clipboard.writeText(roomLink)} className="text-sm px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 transition">Copy link</button>
           </div>
         </div>
 
@@ -587,19 +519,13 @@ export default function RoomPage() {
           <div className="mb-4 p-4 rounded-lg bg-white/10 border border-white/20 text-sm text-gray-300 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium text-white">How to play</span>
-              <button
-                type="button"
-                onClick={() => setShowHowToPlay(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                ×
-              </button>
+              <button type="button" onClick={() => setShowHowToPlay(false)} className="text-gray-400 hover:text-white">×</button>
             </div>
             <p>Fill cells to match the row and column clues. Each number is a run of filled cells; <code className="text-rose-400">0</code> means no filled cells in that row/column.</p>
             <p><strong>Tap/click:</strong> 1st = black (filled), 2nd = X (empty for sure), 3rd = clear.</p>
-            <p><strong>Drag:</strong> Press and drag to paint multiple cells — starts black or X depending on the cell you started on.</p>
+            <p><strong>Drag:</strong> Press and drag to paint multiple cells.</p>
             <p>Only the black cells are checked; first to finish with all correct filled cells wins.</p>
-            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room in this browser. Timer and game state are also restored. Closing the tab or navigating away counts as leaving the room.</p>
+            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room. Closing the tab counts as leaving.</p>
           </div>
         )}
 
@@ -608,20 +534,11 @@ export default function RoomPage() {
             <p className="text-gray-300 mb-2">Players in room ({playerList.length})</p>
             <ul className="list-disc list-inside text-gray-400 text-sm mb-3">
               {playerList.map(([id, p]) => (
-                <li key={id}>
-                  {p.username}
-                  {id === userId && " (you)"}
-                </li>
+                <li key={id}>{p.username}{id === userId && " (you)"}</li>
               ))}
             </ul>
             {isHost ? (
-              <button
-                type="button"
-                onClick={startGame}
-                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium"
-              >
-                Start game
-              </button>
+              <button type="button" onClick={startGame} className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium">Start game</button>
             ) : (
               <p className="text-gray-300 text-sm">Waiting for host to start the game…</p>
             )}
@@ -634,8 +551,7 @@ export default function RoomPage() {
             <ul className="space-y-1">
               {finishedList.map(([id, p], i) => (
                 <li key={id} className="text-white">
-                  {i + 1}. {p.username}
-                  {id === userId && " (you)"} — {formatTime(p.finishedTimeMs!)}
+                  {i + 1}. {p.username}{id === userId && " (you)"} — {formatTime(p.finishedTimeMs!)}
                   {winner && winner[0] === id && <span className="text-green-400 ml-1">✓</span>}
                 </li>
               ))}
@@ -644,47 +560,25 @@ export default function RoomPage() {
         )}
 
         <div className={!canPlay ? "opacity-60 pointer-events-none" : ""}>
-          <GameGrid
-            puzzle={puzzle}
-            grid={grid}
-            onCellChange={onCellChange}
-            disabled={finishedTime != null}
-            violations={getViolations(grid, puzzle)}
-          />
+          <GameGrid puzzle={puzzle} grid={grid} onCellChange={onCellChange} disabled={finishedTime != null} violations={getViolations(grid, puzzle)} />
         </div>
 
         {canPlay && playerList.length > 0 && (
           <div className="mt-4 rounded-lg bg-white/5 border border-white/10 overflow-hidden">
-            <p className="text-xs text-gray-500 uppercase tracking-wider px-4 py-2 border-b border-white/10">
-              Players
-            </p>
+            <p className="text-xs text-gray-500 uppercase tracking-wider px-4 py-2 border-b border-white/10">Players</p>
             <ul className="divide-y divide-white/10">
               {playerList.map(([id, p]) => (
                 <li key={id} className="px-4 py-3 flex flex-col gap-1.5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-white font-medium truncate">
-                      {p.username}
-                      {id === userId && (
-                        <span className="ml-1.5 text-gray-400 font-normal text-sm">(you)</span>
-                      )}
-                    </span>
+                    <span className="text-white font-medium truncate">{p.username}{id === userId && <span className="ml-1.5 text-gray-400 font-normal text-sm">(you)</span>}</span>
                     {p.finishedTimeMs != null ? (
-                      <span className="text-green-400 text-sm font-mono tabular-nums shrink-0">
-                        {formatTime(p.finishedTimeMs)}
-                      </span>
+                      <span className="text-green-400 text-sm font-mono tabular-nums shrink-0">{formatTime(p.finishedTimeMs)}</span>
                     ) : (
-                      <span className="text-gray-400 text-sm tabular-nums shrink-0">
-                        {(id === userId ? myProgressPercent : (p.percent ?? 0))}%
-                      </span>
+                      <span className="text-gray-400 text-sm tabular-nums shrink-0">{(id === userId ? myProgressPercent : (p.percent ?? 0))}%</span>
                     )}
                   </div>
                   <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-rose-500/80 transition-all duration-300"
-                      style={{
-                        width: `${p.finishedTimeMs != null ? 100 : (id === userId ? myProgressPercent : (p.percent ?? 0))}%`,
-                      }}
-                    />
+                    <div className="h-full rounded-full bg-rose-500/80 transition-all duration-300" style={{ width: `${p.finishedTimeMs != null ? 100 : (id === userId ? myProgressPercent : (p.percent ?? 0))}%` }} />
                   </div>
                 </li>
               ))}

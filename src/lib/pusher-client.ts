@@ -32,7 +32,8 @@ export function subscribeRoom(
   onGameStart: (data: { startedAt: number }) => void,
   onPlayerLeft?: (data: { userId: string }) => void,
   onHostChanged?: (data: { hostUserId: string | null }) => void,
-  onRoomSync?: (data: RoomSyncPayload) => void
+  onRoomSync?: (data: RoomSyncPayload) => void,
+  onSubscribed?: () => void
 ): (() => void) {
   const client = getPusherClient();
   if (!client) return () => {};
@@ -46,6 +47,7 @@ export function subscribeRoom(
   if (onPlayerLeft) channel.bind("player-left", onPlayerLeft);
   if (onHostChanged) channel.bind("host-changed", onHostChanged);
   if (onRoomSync) channel.bind("room-sync", onRoomSync);
+  if (onSubscribed) channel.bind("pusher:subscription_succeeded", onSubscribed);
 
   return () => {
     channel.unbind_all();
