@@ -73,9 +73,9 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
   const removeTouchListeners = useCallback(() => {
     const L = touchListenersRef.current;
     if (!L) return;
-    document.removeEventListener("touchmove", L.move, { capture: true, passive: false });
-    document.removeEventListener("touchend", L.end, { capture: true });
-    document.removeEventListener("touchcancel", L.end, { capture: true });
+    document.removeEventListener("touchmove", L.move as EventListener, { capture: true });
+    document.removeEventListener("touchend", L.end as EventListener, { capture: true });
+    document.removeEventListener("touchcancel", L.end as EventListener, { capture: true });
     touchListenersRef.current = null;
   }, []);
 
@@ -189,9 +189,9 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
         lastCellRef.current = null;
       };
 
-      document.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-      document.addEventListener("touchend", onTouchEnd, { capture: true });
-      document.addEventListener("touchcancel", onTouchEnd, { capture: true });
+      document.addEventListener("touchmove", onTouchMove as EventListener, { capture: true, passive: false });
+      document.addEventListener("touchend", onTouchEnd as EventListener, { capture: true });
+      document.addEventListener("touchcancel", onTouchEnd as EventListener, { capture: true });
       touchListenersRef.current = { move: onTouchMove, end: onTouchEnd };
     },
     [disabled, grid, getCellFromPoint, onCellChange, removeTouchListeners]
