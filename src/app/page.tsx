@@ -52,7 +52,7 @@ export default function HomePage() {
       <div className="w-full max-w-sm space-y-4">
         <section className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
           <h2 className="text-sm font-medium text-gray-300 mb-2">Daily</h2>
-          <p className="text-xs text-gray-500 mb-2">One puzzle per size per day (UTC). Play solo and share your time.</p>
+          <p className="text-xs text-gray-500 mb-2">One puzzle per size per day (Eastern). Play solo and share your time.</p>
           <div className="grid grid-cols-4 gap-2 mb-2">
             {SIZES.map((s) => (
               <a

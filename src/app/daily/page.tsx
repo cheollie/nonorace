@@ -23,9 +23,9 @@ function getSize(searchParams: ReturnType<typeof useSearchParams>): Size {
   return 10;
 }
 
-/** Today's date in UTC (YYYY-MM-DD) so everyone gets the same daily. */
-function getTodayUTC(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Today's date in Eastern Time (YYYY-MM-DD) so everyone gets the same daily. */
+function getTodayET(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
 function formatTime(ms: number): string {
@@ -35,7 +35,7 @@ function formatTime(ms: number): string {
 function DailyContent() {
   const searchParams = useSearchParams();
   const size = getSize(searchParams);
-  const dateStr = getTodayUTC();
+  const dateStr = getTodayET();
 
   const puzzle = useMemo(
     () => generatePuzzle(`daily-${dateStr}-${size}`, size, size),
@@ -162,7 +162,7 @@ function DailyContent() {
             </Link>
             <span className="text-gray-500">|</span>
             <span className="text-sm text-gray-400">
-              Daily {size}×{size} · {dateStr} (UTC)
+              Daily {size}×{size} · {dateStr} (ET)
             </span>
             <div className="flex gap-1">
               {SIZES.map((s) => (
