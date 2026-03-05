@@ -451,6 +451,22 @@ export default function RoomPage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [roomId, gameStartedAt, applyStateToPlayers]);
 
+  // When tab is closed or user navigates away, notify server so others see you leave
+  useEffect(() => {
+    if (!roomId || !userId) return;
+    const leaveUrl = `/api/room/${roomId}/leave`;
+    const payload = new Blob([JSON.stringify({ userId })], { type: "application/json" });
+    const onUnload = () => {
+      navigator.sendBeacon(leaveUrl, payload);
+    };
+    window.addEventListener("pagehide", onUnload);
+    window.addEventListener("beforeunload", onUnload);
+    return () => {
+      window.removeEventListener("pagehide", onUnload);
+      window.removeEventListener("beforeunload", onUnload);
+    };
+  }, [roomId, userId]);
+
   const startGame = useCallback(() => {
     fetch(`/api/room/${roomId}/start`, {
       method: "POST",
@@ -591,7 +607,7 @@ export default function RoomPage() {
             <p><strong>Tap/click:</strong> 1st = black (filled), 2nd = X (empty for sure), 3rd = clear.</p>
             <p><strong>Drag:</strong> Press and drag to paint multiple cells — starts black or X depending on the cell you started on.</p>
             <p>Only the black cells are checked; first to finish with all correct filled cells wins.</p>
-            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room in this browser. Timer and game state are also restored. Use Leave if you want to leave the room (closing the tab does not remove you from others’ list).</p>
+            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room in this browser. Timer and game state are also restored. Closing the tab or navigating away counts as leaving the room.</p>
           </div>
         )}
 

@@ -122,7 +122,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
   return (
     <div
       ref={gridRef}
-      className="inline-block overflow-auto p-1 select-none relative"
+      className="inline-block overflow-auto p-1 select-none relative touch-none"
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
