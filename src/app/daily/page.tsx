@@ -11,7 +11,7 @@ import {
 import { GameGrid } from "@/app/room/[roomId]/GameGrid";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 const SIZES = [2, 10, 15, 20] as const;
 type Size = (typeof SIZES)[number];
@@ -32,7 +32,7 @@ function formatTime(ms: number): string {
   return `${Math.floor(ms / 60000)}:${(Math.floor(ms / 1000) % 60).toString().padStart(2, "0")}.${Math.floor(ms / 100) % 10}`;
 }
 
-export default function DailyPage() {
+function DailyContent() {
   const searchParams = useSearchParams();
   const size = getSize(searchParams);
   const dateStr = getTodayUTC();
@@ -216,5 +216,19 @@ export default function DailyPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function DailyPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen p-4 md:p-6 flex items-center justify-center">
+          <p className="text-gray-400">Loading...</p>
+        </main>
+      }
+    >
+      <DailyContent />
+    </Suspense>
   );
 }
