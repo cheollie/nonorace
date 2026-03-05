@@ -63,9 +63,9 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
         if (target.closest?.("button") && el.contains(target)) e.preventDefault();
       }
     };
-    el.addEventListener("touchstart", onTouchStartCapture, { capture: true, passive: false });
-    return () =>
-      el.removeEventListener("touchstart", onTouchStartCapture, { capture: true, passive: false });
+    const listener = onTouchStartCapture as EventListener;
+    el.addEventListener("touchstart", listener, { capture: true, passive: false });
+    return () => el.removeEventListener("touchstart", listener, { capture: true });
   }, []);
 
   const getCellFromPoint = useCallback(
