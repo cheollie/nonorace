@@ -1,7 +1,7 @@
 "use client";
 
 import type { CellState, NonogramPuzzle } from "@/lib/nonogram";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 function cycle(state: CellState): CellState {
   if (state === "empty") return "filled";
@@ -41,6 +41,7 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
     pointerId: 0,
   });
   const docListenersRef = useRef<{ move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null>(null);
+  const docListenersTargetRef = useRef<HTMLElement | null>(null);
   const touchListenersRef = useRef<{ move: (e: TouchEvent) => void; end: (e: TouchEvent) => void } | null>(null);
 
   const rowSet = new Set(violations?.rowIndices ?? []);
@@ -50,6 +51,22 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
   const clueSize = 20;
   const gap = 1;
   const lastCellRef = useRef<{ r: number; c: number } | null>(null);
+
+  // Best practice for touch drag (MDN / web.dev): use a non-passive touchstart so preventDefault()
+  // actually works and the browser delivers touchmove. React’s synthetic touchstart may be passive.
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onTouchStartCapture = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const target = e.target as HTMLElement;
+        if (target.closest?.("button") && el.contains(target)) e.preventDefault();
+      }
+    };
+    el.addEventListener("touchstart", onTouchStartCapture, { capture: true, passive: false });
+    return () =>
+      el.removeEventListener("touchstart", onTouchStartCapture, { capture: true, passive: false });
+  }, []);
 
   const getCellFromPoint = useCallback(
     (clientX: number, clientY: number): { r: number; c: number } | null => {
@@ -81,15 +98,20 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
 
   const removeDocListeners = useCallback(() => {
     const L = docListenersRef.current;
-    if (!L) return;
-    document.removeEventListener("pointermove", L.move, { capture: true });
-    document.removeEventListener("pointerup", L.up, { capture: true });
-    document.removeEventListener("pointercancel", L.up, { capture: true });
+    const target = docListenersTargetRef.current;
+    if (!L || !target) return;
+    target.removeEventListener("pointermove", L.move, { capture: true });
+    target.removeEventListener("pointerup", L.up, { capture: true });
+    target.removeEventListener("pointercancel", L.up, { capture: true });
     docListenersRef.current = null;
+    docListenersTargetRef.current = null;
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent, r: number, c: number) => {
     if (disabled) return;
+    // Touch: use touch path only. iOS has a WebKit bug where setPointerCapture doesn't dispatch
+    // pointer events outside the element, so drag would break. See MDN Pointer events + touch fallback.
+    if (e.pointerType === "touch") return;
     const current = grid[r][c];
     let brush: CellState;
     if (e.button === 0) {
@@ -128,10 +150,13 @@ export function GameGrid({ puzzle, grid, onCellChange, disabled, violations }: G
       gridRef.current?.releasePointerCapture(pid);
     };
 
-    document.addEventListener("pointermove", onDocMove, { capture: true, passive: false });
-    document.addEventListener("pointerup", onDocUp, { capture: true });
-    document.addEventListener("pointercancel", onDocUp, { capture: true });
+    const target = gridRef.current;
+    if (!target) return;
+    target.addEventListener("pointermove", onDocMove, { capture: true, passive: false });
+    target.addEventListener("pointerup", onDocUp, { capture: true });
+    target.addEventListener("pointercancel", onDocUp, { capture: true });
     docListenersRef.current = { move: onDocMove, up: onDocUp };
+    docListenersTargetRef.current = target;
   };
 
   const handlePointerEnter = (r: number, c: number) => {
