@@ -46,6 +46,22 @@ export default function HomePage() {
 
       <div className="w-full max-w-sm space-y-4">
         <div className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">
+          <p className="text-sm text-gray-400 mb-2">Daily</p>
+          <p className="text-xs text-gray-500 mb-2">One puzzle per size per day (UTC). Share your time.</p>
+          <div className="grid grid-cols-4 gap-2 mb-2">
+            {SIZES.map((s) => (
+              <a
+                key={s}
+                href={`/daily?size=${s}`}
+                className="py-2 rounded-lg font-medium transition text-center bg-amber-600/20 hover:bg-amber-600/40 text-amber-200 border border-amber-500/30"
+              >
+                {s}×{s}
+              </a>
+            ))}
+          </div>
+        </div>
+
+        <div className="border-t border-white/10 pt-4">
           <p className="text-sm text-gray-400 mb-2">Create room</p>
           <div className="grid grid-cols-4 gap-2 mb-3">
             {SIZES.map((s) => (

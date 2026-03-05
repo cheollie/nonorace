@@ -83,6 +83,7 @@ export function generatePuzzle(roomId: string, rows: number, cols: number): Nono
 }
 
 function getClue(line: boolean[]): number[] {
+  if (!Array.isArray(line)) return [0];
   const out: number[] = [];
   let count = 0;
   for (const cell of line) {
@@ -98,6 +99,7 @@ function getClue(line: boolean[]): number[] {
 
 /** Get run lengths of filled cells in a line (empty and cross both count as break). */
 export function getRunsFromLine(line: CellState[]): number[] {
+  if (!Array.isArray(line)) return [];
   const out: number[] = [];
   let count = 0;
   for (const cell of line) {
