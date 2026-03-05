@@ -105,7 +105,8 @@ export async function recordFinished(
   username: string,
   timeMs: number
 ): Promise<void> {
-  const data = await getOrCreate(roomId);
+  const data = await getRoomRaw(roomId);
+  if (!data) return; // room doesn't exist (e.g. serverless cold start); don't create an empty room and overwrite
   const existing = data.finished.findIndex((e) => e.userId === userId);
   if (existing >= 0) data.finished[existing] = { userId, username, timeMs };
   else data.finished.push({ userId, username, timeMs });
@@ -137,9 +138,14 @@ export async function addMember(
 ): Promise<{ isHost: boolean }> {
   const data = await getOrCreate(roomId);
   const existing = data.members.findIndex((m) => m.userId === userId);
-  const entry = { userId, username: username || "Player" };
-  if (existing >= 0) data.members[existing] = entry;
-  else data.members.push(entry);
+  const name = (username && username.trim() !== "" && username.trim() !== "Player") ? username.trim() : "Player";
+  if (existing >= 0) {
+    // Don't overwrite existing member's name with "Player" (e.g. from a spurious re-join or Strict Mode double-mount)
+    const keep = data.members[existing];
+    data.members[existing] = { userId, username: name !== "Player" ? name : keep.username };
+  } else {
+    data.members.push({ userId, username: name });
+  }
   if (claimHost) {
     if (!data.creatorUserId) {
       data.creatorUserId = userId;

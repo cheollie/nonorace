@@ -152,8 +152,9 @@ export function RoomScreen({
     if (typeof window === "undefined") return;
     const saved = getUsername();
     setUsernameState(saved);
-    setShowUsernamePrompt(true);
-    setHasConfirmedUsername(false);
+    const alreadyConfirmed = sessionStorage.getItem(USERNAME_CONFIRMED_KEY) === "1";
+    setShowUsernamePrompt(!alreadyConfirmed);
+    setHasConfirmedUsername(alreadyConfirmed);
   }, []);
 
   const setUsername = useCallback((name: string) => {
@@ -234,6 +235,9 @@ export function RoomScreen({
       const members = Array.isArray(data?.members) ? data.members : [];
       const list = Array.isArray(data?.finished) ? data.finished : [];
       setPlayers((prev) => {
+        const currentCount = Object.keys(prev).length;
+        // Don't replace with fewer members – avoids applying stale/corrupt state (e.g. after someone finishes, refetch returning wrong data would "kick" everyone)
+        if (members.length < currentCount) return prev;
         const next: Record<string, PlayerState> = {};
         for (const m of members) {
           next[m.userId] = {
@@ -271,10 +275,14 @@ export function RoomScreen({
       finished?: { userId: string; username: string; timeMs: number }[];
     }) => {
       if (data?.startedAt != null) setGameStartedAt(data.startedAt);
-      if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId ?? null);
-      if (Array.isArray(data?.members) || Array.isArray(data?.finished)) applyStateToPlayers(data);
+      // Ignore stale room-sync: if this state doesn't include us, it's from before we joined (e.g. other client joined first) and would wrongly un-host us and drop us from the list
+      const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
+      if (weAreInRoom) {
+        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId ?? null);
+        if (Array.isArray(data?.members) || Array.isArray(data?.finished)) applyStateToPlayers(data);
+      }
     },
-    [setGameStartedAt, applyStateToPlayers]
+    [userId, setGameStartedAt, applyStateToPlayers]
   );
 
   const applyFullStateRef = useRef(applyFullState);
