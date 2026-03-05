@@ -398,6 +398,8 @@ export function RoomScreen({
           .catch(() => {});
       }
     );
+    // Intentionally only [roomId]: handlers use refs; re-subscribing on other deps would drop Pusher events (e.g. game-start, player-join)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   useEffect(() => {

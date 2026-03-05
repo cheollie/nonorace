@@ -2,7 +2,7 @@
 
 import { RoomScreen } from "./RoomScreen";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 const SIZES = [2, 10, 15, 20] as const;
 type Size = (typeof SIZES)[number];
@@ -14,7 +14,7 @@ function getSize(searchParams: ReturnType<typeof useSearchParams>): Size {
   return 10;
 }
 
-export default function RoomPage() {
+function RoomPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const code = searchParams.get("code")?.trim().toUpperCase() ?? "";
@@ -54,5 +54,13 @@ export default function RoomPage() {
         ← Back to home
       </a>
     </main>
+  );
+}
+
+export default function RoomPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>}>
+      <RoomPageContent />
+    </Suspense>
   );
 }
