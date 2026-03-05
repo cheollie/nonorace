@@ -1,14 +1,16 @@
 # Nonorace
 
-Race a friend (or the clock) on nonogram puzzles. **Daily** mode: one puzzle per grid size per day, play solo and share your time. **Multiplayer**: create a room, share the link, host starts the timer — first to finish wins. No login; optional username.
+Race a friend (or the clock) on nonogram puzzles. 
+
+**Daily** mode: one puzzle per grid size per day, play solo and share your time. 
+
+**Multiplayer**: create a room, share the link, host starts the timer — first to finish wins. No login; optional username.
 
 ---
 
 ## Why this exists
 
-> I procrastinate often with nonograms. I am also very competitive so I wanted to find a way to beat my friends at nonograms so my time waste can be somewhat useful.
-
-Nonorace is that: same puzzle, shared timer, winner takes the bragging rights.
+I was bored. I procrastinate often with nonograms. I am also very competitive so I wanted to find a way to beat my friends at nonograms so my wasted time can be somewhat useful.
 
 ---
 
