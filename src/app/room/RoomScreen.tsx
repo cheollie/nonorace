@@ -166,7 +166,7 @@ export function RoomScreen({
   const USERNAME_CONFIRMED_KEY = "nono-username-confirmed";
 
   const userId = getUserId();
-  const isHost = serverHostUserId === userId;
+  const isHost = isHostFromUrl || serverHostUserId === userId;
   const [username, setUsernameState] = useState("");
   const [showUsernamePrompt, setShowUsernamePrompt] = useState(false);
   const [hasConfirmedUsername, setHasConfirmedUsername] = useState(false);
@@ -175,9 +175,8 @@ export function RoomScreen({
     if (typeof window === "undefined") return;
     const saved = getUsername();
     setUsernameState(saved);
-    const alreadyConfirmed = sessionStorage.getItem(USERNAME_CONFIRMED_KEY) === "1";
-    setShowUsernamePrompt(!alreadyConfirmed);
-    setHasConfirmedUsername(alreadyConfirmed);
+    setShowUsernamePrompt(true);
+    setHasConfirmedUsername(false);
   }, []);
 
   const setUsername = useCallback((name: string) => {
@@ -299,20 +298,13 @@ export function RoomScreen({
     }) => {
       if (data?.startedAt != null) setGameStartedAt(data.startedAt);
       if (data?.size != null && VALID_SIZES.includes(data.size)) setServerSize(data.size);
-      const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
       if (data?.hostUserId !== undefined) {
-        setServerHostUserId((prev) => {
-          if (data.hostUserId === userId) return userId;
-          if (!weAreInRoom) return data.hostUserId ?? null;
-          const membersCount = data.members?.length ?? 0;
-          if (data.hostUserId == null && (membersCount > 0 || isHostFromUrl)) return prev;
-          if (weAreInRoom && data.hostUserId !== userId && data.hostUserId != null && prev === userId) return prev;
-          return data.hostUserId ?? null;
-        });
+        setServerHostUserId((prev) => data.hostUserId ?? prev);
       }
+      const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
       if (weAreInRoom && (Array.isArray(data?.members) || Array.isArray(data?.finished))) applyStateToPlayers(data);
     },
-    [userId, isHostFromUrl, setGameStartedAt, applyStateToPlayers]
+    [userId, setGameStartedAt, applyStateToPlayers]
   );
 
   const applyFullStateRef = useRef(applyFullState);

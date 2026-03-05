@@ -167,16 +167,10 @@ export async function addMember(
   return { isHost: data.hostUserId === userId };
 }
 
-/** Remove member. If host/creator left, assign next host to first remaining member. */
+/** Remove member. Host/creator are never reassigned; they stay set for the life of the room. */
 export async function removeMember(roomId: string, userId: string): Promise<void> {
   const data = await getRoomRaw(roomId);
   if (!data) return;
-  const wasHost = data.hostUserId === userId;
-  const wasCreator = data.creatorUserId === userId;
   data.members = data.members.filter((m) => m.userId !== userId);
-  if (wasHost || wasCreator) {
-    data.hostUserId = data.members.length > 0 ? data.members[0].userId : null;
-    if (wasCreator) data.creatorUserId = null;
-  }
   await setRoomRaw(roomId, data);
 }
