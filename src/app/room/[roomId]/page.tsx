@@ -239,6 +239,7 @@ export default function RoomPage() {
     }).catch(() => {});
   }, [roomId, userId, grid, puzzle, gameStartedAt, finishedTime]);
 
+  // Apply server state: replace player list with server's members (single source of truth), preserve percent/finishedTimeMs for live updates
   const applyStateToPlayers = useCallback(
     (data: {
       members?: { userId: string; username: string }[];
@@ -246,37 +247,51 @@ export default function RoomPage() {
     }) => {
       const members = Array.isArray(data?.members) ? data.members : [];
       const list = Array.isArray(data?.finished) ? data.finished : [];
-      if (members.length > 0 || list.length > 0) {
-        setPlayers((prev) => {
-          const next = { ...prev };
-          for (const m of members) {
-            next[m.userId] = {
-              ...(next[m.userId] ?? { username: m.username, percent: null, finishedTimeMs: null }),
-              username: m.username,
-            };
-          }
-          for (const f of list) {
-            next[f.userId] = {
-              ...(next[f.userId] ?? { username: f.username, percent: null }),
-              username: f.username,
-              finishedTimeMs: f.timeMs,
-            };
-          }
-          return next;
-        });
-        const myEntry = list.find((f: { userId: string }) => f.userId === userId);
-        if (myEntry) {
-          setFinishedTime(myEntry.timeMs);
-          if (typeof window !== "undefined") {
-            sessionStorage.setItem(`nono-finished-${roomId}`, String(myEntry.timeMs));
-          }
+      setPlayers((prev) => {
+        const next: Record<string, PlayerState> = {};
+        for (const m of members) {
+          next[m.userId] = {
+            username: m.username,
+            percent: prev[m.userId]?.percent ?? null,
+            finishedTimeMs: prev[m.userId]?.finishedTimeMs ?? null,
+          };
+        }
+        for (const f of list) {
+          const existing = next[f.userId];
+          next[f.userId] = {
+            username: f.username,
+            percent: existing?.percent ?? prev[f.userId]?.percent ?? null,
+            finishedTimeMs: f.timeMs,
+          };
+        }
+        return next;
+      });
+      const myEntry = list.find((f: { userId: string }) => f.userId === userId);
+      if (myEntry) {
+        setFinishedTime(myEntry.timeMs);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(`nono-finished-${roomId}`, String(myEntry.timeMs));
         }
       }
     },
     [userId, roomId]
   );
 
-  // Join room once, only after user has confirmed username; send name from localStorage so reload gets correct name
+  const applyFullState = useCallback(
+    (data: {
+      startedAt?: number | null;
+      hostUserId?: string | null;
+      members?: { userId: string; username: string }[];
+      finished?: { userId: string; username: string; timeMs: number }[];
+    }) => {
+      if (data?.startedAt != null) setGameStartedAt(data.startedAt);
+      if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId ?? null);
+      if (Array.isArray(data?.members) || Array.isArray(data?.finished)) applyStateToPlayers(data);
+    },
+    [setGameStartedAt, applyStateToPlayers]
+  );
+
+  // Join room once after username confirmed; then always refetch /state so we have server truth (host, members)
   useEffect(() => {
     if (!roomId || !hasConfirmedUsername || sentJoin.current) return;
     sentJoin.current = true;
@@ -292,25 +307,14 @@ export default function RoomPage() {
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data?.startedAt != null) setGameStartedAt(data.startedAt);
-        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
-        applyStateToPlayers(data);
+        applyFullState(data);
+        return fetch(`/api/room/${roomId}/state`).then((r) => r.json());
+      })
+      .then((stateData) => {
+        if (stateData && !stateData.error) applyFullState(stateData);
       })
       .catch(() => {});
-  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, setGameStartedAt, applyStateToPlayers]);
-
-  // Late joiner / reload: fetch room state for gameStartedAt, host, members, and finished list
-  useEffect(() => {
-    if (!roomId) return;
-    fetch(`/api/room/${roomId}/state`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.startedAt != null) setGameStartedAt(data.startedAt);
-        if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
-        applyStateToPlayers(data);
-      })
-      .catch(() => {});
-  }, [roomId, setGameStartedAt, applyStateToPlayers]);
+  }, [roomId, userId, hasConfirmedUsername, isHostFromUrl, applyFullState]);
 
   // Recompute win state whenever grid/game state updates (load, join, restore): if our grid is solved, show us as finished
   useEffect(() => {
@@ -383,10 +387,8 @@ export default function RoomPage() {
         // Refetch full state so we see everyone in the room (fixes race where we didn't have the other person yet)
         fetch(`/api/room/${roomId}/state`)
           .then((res) => res.json())
-          .then((stateData: { startedAt?: number | null; hostUserId?: string | null; members?: { userId: string; username: string }[]; finished?: { userId: string; username: string; timeMs: number }[] }) => {
-            if (stateData?.startedAt != null) setGameStartedAt(stateData.startedAt!);
-            if (stateData?.hostUserId !== undefined) setServerHostUserId(stateData.hostUserId ?? null);
-            applyStateToPlayers(stateData);
+          .then((stateData) => {
+            if (stateData && !stateData.error) applyFullState(stateData);
           })
           .catch(() => {});
       },
@@ -401,7 +403,9 @@ export default function RoomPage() {
         // Refetch authoritative state so we don't miss updates if Pusher was slow or we weren't subscribed yet
         fetch(`/api/room/${roomId}/state`)
           .then((res) => res.json())
-          .then(applyStateToPlayers)
+          .then((stateData) => {
+            if (stateData && !stateData.error) applyFullState(stateData);
+          })
           .catch(() => {});
       },
       (data) => {
@@ -418,12 +422,10 @@ export default function RoomPage() {
         setServerHostUserId(data.hostUserId);
       },
       (data: { startedAt: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
-        if (data.startedAt != null) setGameStartedAt(data.startedAt);
-        if (data.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
-        applyStateToPlayers({ members: data.members, finished: data.finished });
+        applyFullState(data);
       }
     );
-  }, [roomId, applyStateToPlayers, setGameStartedAt, userId, usernameOrFallback]);
+  }, [roomId, applyFullState, userId, usernameOrFallback]);
 
   // When tab becomes visible and game has started, refetch state so we don't show stale finish state if we missed a Pusher event
   useEffect(() => {
@@ -433,14 +435,13 @@ export default function RoomPage() {
       fetch(`/api/room/${roomId}/state`)
         .then((res) => res.json())
         .then((data) => {
-          if (data?.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
-          applyStateToPlayers(data);
+          if (data && !data.error) applyFullState(data);
         })
         .catch(() => {});
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [roomId, gameStartedAt, applyStateToPlayers]);
+  }, [roomId, gameStartedAt, applyFullState]);
 
   // When tab is closed or user navigates away, notify server so others see you leave
   useEffect(() => {
