@@ -135,14 +135,22 @@ export async function getRoomState(roomId: string): Promise<{
 
 const VALID_SIZES = [2, 10, 15, 20] as const;
 
-/** Add member. Only room creator (first claimHost) is ever host. Size is set when creator first joins. */
+export type RoomStateSnapshot = {
+  startedAt: number | null;
+  size: number | null;
+  hostUserId: string | null;
+  members: MemberEntry[];
+  finished: FinishedEntry[];
+};
+
+/** Add member. Only room creator (first claimHost) is ever host. Size is set when creator first joins. Returns the state we just wrote so callers don't need a separate read (avoids stale reads in serverless). */
 export async function addMember(
   roomId: string,
   userId: string,
   claimHost: boolean,
   username: string,
   size?: number
-): Promise<{ isHost: boolean }> {
+): Promise<{ isHost: boolean; state: RoomStateSnapshot }> {
   const data = await getOrCreate(roomId);
   const existing = data.members.findIndex((m) => m.userId === userId);
   const name = (username && username.trim() !== "" && username.trim() !== "Player") ? username.trim() : "Player";
@@ -164,7 +172,14 @@ export async function addMember(
     }
   }
   await setRoomRaw(roomId, data);
-  return { isHost: data.hostUserId === userId };
+  const state: RoomStateSnapshot = {
+    startedAt: data.startedAt ?? null,
+    size: data.size ?? null,
+    hostUserId: data.hostUserId,
+    members: [...data.members],
+    finished: [...data.finished],
+  };
+  return { isHost: data.hostUserId === userId, state };
 }
 
 /** Remove member. Host/creator are never reassigned; they stay set for the life of the room. */

@@ -1,5 +1,5 @@
 import { broadcastJoin, broadcastHostChanged, broadcastRoomSync } from "@/lib/pusher-server";
-import { addMember, getRoomState, recordFinished } from "@/lib/room-state";
+import { addMember, recordFinished } from "@/lib/room-state";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
@@ -18,32 +18,33 @@ export async function POST(
   const uid = typeof userId === "string" ? userId : "anon";
   const name = (typeof username === "string" ? username : "Player").trim() || "Player";
   if (!roomId) return NextResponse.json({ error: "Bad request" }, { status: 400 });
-  const { isHost } = await addMember(roomId, uid, host === true, name, bodySize);
+  const { isHost, state } = await addMember(roomId, uid, host === true, name, bodySize);
+  let finalState = state;
   if (typeof bodyFinishedMs === "number") {
     await recordFinished(roomId, uid, name, bodyFinishedMs);
+    finalState = { ...state, finished: [...state.finished.filter((e) => e.userId !== uid), { userId: uid, username: name, timeMs: bodyFinishedMs }] };
   }
-  const state = await getRoomState(roomId);
-  const finishedEntry = state?.finished?.find((e) => e.userId === uid);
+  const finishedEntry = finalState.finished.find((e) => e.userId === uid);
   broadcastJoin(roomId, {
     userId: uid,
     username: name,
     ...(finishedEntry && { finishedTimeMs: finishedEntry.timeMs }),
   });
-  broadcastHostChanged(roomId, { hostUserId: state?.hostUserId ?? null });
+  broadcastHostChanged(roomId, { hostUserId: finalState.hostUserId ?? null });
   broadcastRoomSync(roomId, {
-    members: state?.members ?? [],
-    hostUserId: state?.hostUserId ?? null,
-    startedAt: state?.startedAt ?? null,
-    size: state?.size ?? null,
-    finished: state?.finished ?? [],
+    members: finalState.members,
+    hostUserId: finalState.hostUserId ?? null,
+    startedAt: finalState.startedAt ?? null,
+    size: finalState.size ?? null,
+    finished: finalState.finished,
   });
   return NextResponse.json({
     ok: true,
-    startedAt: state?.startedAt ?? null,
-    size: state?.size ?? null,
-    hostUserId: state?.hostUserId ?? null,
+    startedAt: finalState.startedAt ?? null,
+    size: finalState.size ?? null,
+    hostUserId: finalState.hostUserId ?? null,
     isHost,
-    finished: state?.finished ?? [],
-    members: state?.members ?? [],
+    finished: finalState.finished,
+    members: finalState.members,
   });
 }
