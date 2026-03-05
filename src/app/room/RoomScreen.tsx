@@ -302,8 +302,14 @@ export function RoomScreen({
       if (data?.size != null && VALID_SIZES.includes(data.size)) setServerSize(data.size);
       const weAreInRoom = !Array.isArray(data?.members) || data.members.some((m: { userId: string }) => m.userId === userId);
       if (data?.hostUserId !== undefined) {
-        if (data.hostUserId != null) setServerHostUserId(data.hostUserId);
-        else if (!weAreInRoom) setServerHostUserId(null);
+        setServerHostUserId((prev) => {
+          if (data.hostUserId === userId) return userId;
+          if (!weAreInRoom) return data.hostUserId ?? null;
+          const membersCount = data.members?.length ?? 0;
+          if (data.hostUserId == null && membersCount > 0) return prev;
+          if (weAreInRoom && data.hostUserId !== userId && data.hostUserId != null && prev === userId) return prev;
+          return data.hostUserId ?? null;
+        });
       }
       if (weAreInRoom && (Array.isArray(data?.members) || Array.isArray(data?.finished))) applyStateToPlayers(data);
     },
