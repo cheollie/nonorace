@@ -389,6 +389,15 @@ export default function RoomPage() {
             }),
           }).catch(() => {});
         }
+        // Refetch full state so we see everyone in the room (fixes race where we didn't have the other person yet)
+        fetch(`/api/room/${roomId}/state`)
+          .then((res) => res.json())
+          .then((stateData: { startedAt?: number | null; hostUserId?: string | null; members?: { userId: string; username: string }[]; finished?: { userId: string; username: string; timeMs: number }[] }) => {
+            if (stateData?.startedAt != null) setGameStartedAt(stateData.startedAt!);
+            if (stateData?.hostUserId !== undefined) setServerHostUserId(stateData.hostUserId ?? null);
+            applyStateToPlayers(stateData);
+          })
+          .catch(() => {});
       },
       (data) => {
         setPlayers((prev) => ({
@@ -416,6 +425,11 @@ export default function RoomPage() {
       },
       (data: { hostUserId: string | null }) => {
         setServerHostUserId(data.hostUserId);
+      },
+      (data: { startedAt: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
+        if (data.startedAt != null) setGameStartedAt(data.startedAt);
+        if (data.hostUserId !== undefined) setServerHostUserId(data.hostUserId);
+        applyStateToPlayers({ members: data.members, finished: data.finished });
       }
     );
   }, [roomId, applyStateToPlayers]);

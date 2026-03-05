@@ -1,4 +1,4 @@
-import { broadcastJoin } from "@/lib/pusher-server";
+import { broadcastJoin, broadcastHostChanged, broadcastRoomSync } from "@/lib/pusher-server";
 import { addMember, getRoomState, recordFinished } from "@/lib/room-state";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -27,6 +27,13 @@ export async function POST(
     userId: uid,
     username: name,
     ...(finishedEntry && { finishedTimeMs: finishedEntry.timeMs }),
+  });
+  broadcastHostChanged(roomId, { hostUserId: state?.hostUserId ?? null });
+  broadcastRoomSync(roomId, {
+    members: state?.members ?? [],
+    hostUserId: state?.hostUserId ?? null,
+    startedAt: state?.startedAt ?? null,
+    finished: state?.finished ?? [],
   });
   return NextResponse.json({
     ok: true,

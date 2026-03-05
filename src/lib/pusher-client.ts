@@ -17,14 +17,22 @@ export function getPusherClient(): Pusher | null {
   return pusher;
 }
 
+export type RoomSyncPayload = {
+  members: { userId: string; username: string }[];
+  hostUserId: string | null;
+  startedAt: number | null;
+  finished: { userId: string; username: string; timeMs: number }[];
+};
+
 export function subscribeRoom(
   roomId: string,
   onProgress: (data: { userId: string; username: string; percent: number }) => void,
-  onJoin: (data: { userId: string; username: string }) => void,
+  onJoin: (data: { userId: string; username: string; finishedTimeMs?: number }) => void,
   onFinished: (data: { userId: string; username: string; timeMs: number }) => void,
   onGameStart: (data: { startedAt: number }) => void,
   onPlayerLeft?: (data: { userId: string }) => void,
-  onHostChanged?: (data: { hostUserId: string | null }) => void
+  onHostChanged?: (data: { hostUserId: string | null }) => void,
+  onRoomSync?: (data: RoomSyncPayload) => void
 ): (() => void) {
   const client = getPusherClient();
   if (!client) return () => {};
@@ -37,6 +45,7 @@ export function subscribeRoom(
   channel.bind("game-start", onGameStart);
   if (onPlayerLeft) channel.bind("player-left", onPlayerLeft);
   if (onHostChanged) channel.bind("host-changed", onHostChanged);
+  if (onRoomSync) channel.bind("room-sync", onRoomSync);
 
   return () => {
     channel.unbind_all();

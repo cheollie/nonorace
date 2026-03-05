@@ -60,3 +60,17 @@ export function broadcastHostChanged(roomId: string, payload: { hostUserId: stri
   if (!pusher) return;
   pusher.trigger(getPusherChannel(roomId), "host-changed", payload);
 }
+
+export function broadcastRoomSync(
+  roomId: string,
+  payload: {
+    members: { userId: string; username: string }[];
+    hostUserId: string | null;
+    startedAt: number | null;
+    finished: { userId: string; username: string; timeMs: number }[];
+  }
+) {
+  const pusher = getPusher();
+  if (!pusher) return;
+  pusher.trigger(getPusherChannel(roomId), "room-sync", payload);
+}

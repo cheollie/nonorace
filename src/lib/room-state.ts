@@ -8,6 +8,7 @@ export type MemberEntry = { userId: string; username: string };
 type RoomData = {
   startedAt?: number;
   hostUserId: string | null;
+  creatorUserId: string | null; // first person to join with host=1; they always get host when in room
   members: MemberEntry[];
   finished: FinishedEntry[];
 };
@@ -17,7 +18,7 @@ const roomState = new Map<string, RoomData>();
 function getOrCreate(roomId: string): RoomData {
   let data = roomState.get(roomId);
   if (!data) {
-    data = { hostUserId: null, members: [], finished: [] };
+    data = { hostUserId: null, creatorUserId: null, members: [], finished: [] };
     roomState.set(roomId, data);
   }
   return data;
@@ -56,7 +57,7 @@ export function getRoomState(roomId: string): {
   };
 }
 
-/** Add member with username. Only the first claimHost (room creator) becomes host; later joiners with host=1 cannot steal it. If no host yet and no claimHost, first joiner becomes host. */
+/** Add member with username. Room creator (first claimHost) always gets host when they join; others with host=1 cannot steal it. If no host yet and no claimHost, first joiner becomes host. */
 export function addMember(
   roomId: string,
   userId: string,
@@ -68,11 +69,16 @@ export function addMember(
   const entry = { userId, username: username || "Player" };
   if (existing >= 0) data.members[existing] = entry;
   else data.members.push(entry);
-  // Only set host if: no host yet, or claimer is re-joining as current host (e.g. refresh). Never let a new joiner overwrite existing host.
-  if (claimHost && (!data.hostUserId || data.hostUserId === userId)) {
-    data.hostUserId = userId;
+  if (claimHost) {
+    if (!data.creatorUserId) {
+      data.creatorUserId = userId;
+      data.hostUserId = userId;
+    } else if (data.creatorUserId === userId) {
+      data.hostUserId = userId; // creator rejoined (e.g. refresh), give them host
+    }
+    // else: someone else has host link, don't transfer
   } else if (!data.hostUserId) {
-    data.hostUserId = userId;
+    data.hostUserId = userId; // first joiner without host link
   }
   return { isHost: data.hostUserId === userId };
 }
@@ -85,5 +91,8 @@ export function removeMember(roomId: string, userId: string): void {
   data.members = data.members.filter((m) => m.userId !== userId);
   if (wasHost) {
     data.hostUserId = data.members.length > 0 ? data.members[0].userId : null;
+  }
+  if (data.creatorUserId === userId) {
+    data.creatorUserId = null;
   }
 }
