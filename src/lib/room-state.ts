@@ -28,7 +28,7 @@ function roomKey(roomId: string): string {
   return `${ROOM_KEY_PREFIX}${roomId}`;
 }
 
-function useUpstash(): boolean {
+function hasUpstashConfig(): boolean {
   return !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 }
 
@@ -43,7 +43,7 @@ async function createRedis() {
 }
 
 async function getRedis(): Promise<Awaited<ReturnType<typeof createRedis>> | null> {
-  if (!useUpstash()) return null;
+  if (!hasUpstashConfig()) return null;
   if (redisClient) return redisClient;
   try {
     redisClient = await createRedis();

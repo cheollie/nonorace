@@ -423,7 +423,7 @@ export default function RoomPage() {
         applyStateToPlayers({ members: data.members, finished: data.finished });
       }
     );
-  }, [roomId, applyStateToPlayers]);
+  }, [roomId, applyStateToPlayers, setGameStartedAt, userId, usernameOrFallback]);
 
   // When tab becomes visible and game has started, refetch state so we don't show stale finish state if we missed a Pusher event
   useEffect(() => {
@@ -469,7 +469,7 @@ export default function RoomPage() {
         if (data?.startedAt != null) setGameStartedAt(data.startedAt);
       })
       .catch(() => {});
-  }, [roomId, userId]);
+  }, [roomId, userId, setGameStartedAt]);
 
   const onCellChange = useCallback(
     (r: number, c: number, state: CellState) => {
