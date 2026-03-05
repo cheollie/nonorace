@@ -425,7 +425,7 @@ export function RoomScreen({
           return next;
         });
       },
-      (data: { hostUserId: string | null }) => setServerHostUserId(data.hostUserId),
+      (data: { hostUserId: string | null }) => setServerHostUserId((prev) => data.hostUserId ?? prev),
       (data: { startedAt: number | null; size?: number | null; hostUserId: string | null; members: { userId: string; username: string }[]; finished: { userId: string; username: string; timeMs: number }[] }) => {
         applyFullStateRef.current(data);
       },
