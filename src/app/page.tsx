@@ -1,5 +1,6 @@
 "use client";
 
+import { HowToPlayText } from "@/components/HowToPlay";
 import { generateRoomCode } from "@/lib/room-code";
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -41,9 +42,14 @@ export default function HomePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6">
       <h1 className="text-4xl font-bold text-center mb-2">Nonorace</h1>
-      <p className="text-gray-400 text-center mb-8 max-w-md">
+      <p className="text-gray-400 text-center mb-6 max-w-md">
         A nonogram (picross) game: use the row and column number clues to fill the grid.
       </p>
+
+      <section className="w-full max-w-md mb-8 p-4 rounded-lg bg-white/5 border border-white/10">
+        <h2 className="text-sm font-medium text-gray-300 mb-2">How to play</h2>
+        <HowToPlayText />
+      </section>
 
       <div className="w-full max-w-sm space-y-4">
         <section className="border-t border-white/10 pt-4 first:border-t-0 first:pt-0">

@@ -13,6 +13,7 @@ import { subscribeRoom } from "@/lib/pusher-client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameGrid } from "./GameGrid";
+import { HAS_VISITED_KEY, HowToPlayPanel } from "@/components/HowToPlay";
 
 const SIZES = [2, 10, 15, 20] as const;
 type Size = (typeof SIZES)[number];
@@ -527,6 +528,13 @@ export function RoomScreen({
   const myProgressPercent = canPlay ? progressPercent(grid, puzzle) : 0;
   const [showHowToPlay, setShowHowToPlay] = useState(false);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!hasConfirmedUsername || showUsernamePrompt) return;
+    if (localStorage.getItem(HAS_VISITED_KEY) === "1") return;
+    setShowHowToPlay(true);
+  }, [hasConfirmedUsername, showUsernamePrompt]);
+
   return (
     <main className="min-h-screen p-4 md:p-6">
       {showUsernamePrompt && (
@@ -567,16 +575,14 @@ export function RoomScreen({
         </div>
 
         {showHowToPlay && (
-          <div className="mb-4 p-4 rounded-lg bg-white/10 border border-white/20 text-sm text-gray-300 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-medium text-white">How to play</span>
-              <button type="button" onClick={() => setShowHowToPlay(false)} className="text-gray-400 hover:text-white">×</button>
-            </div>
-            <p>Fill cells to match the row and column clues. Each number is a run of filled cells; <code className="text-rose-400">0</code> means no filled cells in that row/column.</p>
-            <p><strong>Tap/click:</strong> 1st = black (filled), 2nd = X (empty for sure), 3rd = clear.</p>
-            <p><strong>Drag:</strong> Press and drag to paint multiple cells.</p>
-            <p>Only the black cells are checked; first to finish with all correct filled cells wins.</p>
-            <p className="text-gray-500 text-xs mt-2 pt-2 border-t border-white/10"><strong>Reload:</strong> Your grid is saved per room. Closing the tab counts as leaving.</p>
+          <div className="mb-4">
+            <HowToPlayPanel
+              includeRoomNote
+              onClose={() => {
+                setShowHowToPlay(false);
+                if (typeof window !== "undefined") localStorage.setItem(HAS_VISITED_KEY, "1");
+              }}
+            />
           </div>
         )}
 

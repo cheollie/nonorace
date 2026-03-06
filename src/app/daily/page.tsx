@@ -9,6 +9,7 @@ import {
   type NonogramPuzzle,
 } from "@/lib/nonogram";
 import { GameGrid } from "@/app/room/GameGrid";
+import { HowToPlayPanel } from "@/components/HowToPlay";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -54,6 +55,7 @@ function DailyContent() {
   const [stateBySize, setStateBySize] = useState<Record<string, SizeState>>({});
   const [displayTimeMs, setDisplayTimeMs] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [showHowToPlay, setShowHowToPlay] = useState(false);
 
   // Current size's state (or empty); ensure grid dimensions match current size
   const emptyGridForSize = useMemo(() => createEmptyGrid(size, size), [size]);
@@ -205,6 +207,12 @@ function DailyContent() {
                 {copied ? "Copied!" : "Copy"}
               </button>
             </div>
+          </div>
+        )}
+
+        {showHowToPlay && (
+          <div className="mb-4">
+            <HowToPlayPanel onClose={() => setShowHowToPlay(false)} />
           </div>
         )}
 
